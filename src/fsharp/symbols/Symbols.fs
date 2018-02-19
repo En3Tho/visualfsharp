@@ -1709,7 +1709,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
         | _ -> None
 
-    member __.IsEventAddMethod = 
+    member __.IsEventAddMethod =
         if isUnresolved() then false else 
         match d with 
         | M m when m.LogicalName.StartsWithOrdinal("add_") -> 
