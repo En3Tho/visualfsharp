@@ -1709,8 +1709,20 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
         | _ -> None
 
+    member __.AccessorProperty =
+        let makeProp p vref =
+            let pinfo = FSProp(cenv.g, p, Some vref, None)
+            FSharpMemberOrFunctionOrValue(cenv, P pinfo, Item.Property (pinfo.PropertyName, [pinfo]))
+        if isUnresolved() then None else
+        match d with
+        | M (FSMeth (_, p, vref, _)) when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
+            Some (makeProp p vref)
+        | V vref when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
+            vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
+        | _ -> None
+
     member __.IsEventAddMethod =
-        if isUnresolved() then false else 
+        if isUnresolved() then false else
         match d with 
         | M m when m.LogicalName.StartsWithOrdinal("add_") -> 
             let eventName = m.LogicalName.[4..]
