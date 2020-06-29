@@ -1472,7 +1472,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             FSharpMemberFunctionOrValue(cenv, C minfo, Item.CtorGroup(minfo.LogicalName, [minfo]))
         else
             FSharpMemberFunctionOrValue(cenv, M minfo, Item.MethodGroup(minfo.LogicalName, [minfo], None))
-
+            
     member __.IsUnresolved = 
         isUnresolved()
 
@@ -1669,6 +1669,11 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         | E _ -> true
         | _ -> false
 
+    member __.IsFunctionParameter =
+        match d with
+        | V v -> v.IsFunctionParameter
+        | _ -> false
+    
     member x.EventForFSharpProperty = 
         match d with 
         | P p when p.IsFSharpEventProperty  ->
