@@ -242,13 +242,13 @@ type ValFlags(flags: int64) =
         // Clear the IsCompiledAsStaticPropertyWithoutField, only used to determine whether to use a true field for a value, and to eliminate the optimization info for observable bindings
         // Clear the HasBeenReferenced, only used to report "unreferenced variable" warnings and to help collect 'it' values in FSI.EXE
         // Clear the IsGeneratedEventVal, since there's no use in propagating specialname information for generated add/remove event vals
-                                                      (flags       &&&    ~~~0b10011001100000000000L) 
+                                                      (flags       &&&    ~~~0b10011001100000000000L)
 
 type ValParamInfo =
      | NonParam
      | TopLevelParam
      | NestedScopeParam
-    
+
 [<Struct>]
 type ValFlags2 (flags : int64) =
     new (valParamInfo) =
@@ -2646,12 +2646,15 @@ type Val =
         | Some optData -> optData.val_member_info
         | _ -> None
 
+    /// Indicates if this is a top level or a nested scope lambda parameter
     member x.IsParam =
         x.val_flags_2.IsParam
-        
+
+    /// Indicates if this is a top level lambda parameter (like x in fun x -> ... or x in let fn x = ...)
     member x.IsTopLevelParam =
        x.val_flags_2.IsTopLevelParam
-        
+
+    /// Indicates if this is a nested scope lambda parameter (like x in CE's let! x = ..., or x in for x in ..., or x in match value with | Some x ...)
     member x.IsNestedScopeParam =
        x.val_flags_2.IsNestedScopeParam
     
