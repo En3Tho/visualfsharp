@@ -1868,6 +1868,7 @@ let MakeAndPublishSimpleVals cenv env names valParamInfo =
     let tyschemes = DontGeneralizeVals names
     let valSchemes = NameMap.map UseNoArity tyschemes
     let values = MakeAndPublishVals cenv env (ParentNone, false, ExpressionBinding, ValNotInRecScope, valSchemes, [], XmlDoc.Empty, None, valParamInfo)
+
     let vspecMap = NameMap.map fst values
     values, vspecMap
     
@@ -6421,7 +6422,7 @@ and TcIteratedLambdas cenv isFirst (env: TcEnv) overallTy takenNames tpenv e val
     | SynExpr.Lambda (isMember, isSubsequent, spats, bodyExpr, _, m) when isMember || isFirst || isSubsequent ->
         let domainTy, resultTy = UnifyFunctionType None cenv env.DisplayEnv m overallTy
         let vs, (tpenv, names, takenNames) = TcSimplePats cenv isMember CheckCxs domainTy env (tpenv, Map.empty, takenNames) spats
-        let envinner, _, vspecMap = MakeAndPublishSimpleValsForMergedScope cenv env m names valParamInfo
+        let envinner, _, vspecMap = MakeAndPublishSimpleValsForMergedScope cenv env m names TopLevelParam
         let byrefs = vspecMap |> Map.map (fun _ v -> isByrefTy cenv.g v.Type, v)
         let envinner = if isMember then envinner else ExitFamilyRegion envinner
         let bodyExpr, tpenv = TcIteratedLambdas cenv false envinner resultTy takenNames tpenv bodyExpr
@@ -9536,7 +9537,7 @@ and PropagateThenTcDelayed cenv overallTy env tpenv mExpr expr exprty (atomicFla
 
 /// Typecheck "expr ... " constructs where "..." is a sequence of applications, 
 /// type applications and dot-notation projections.
-and TcDelayed cenv overallTy env tpenv mExpr expr exprty (_atomicFlag: ExprAtomicFlag) delayed = 
+and TcDelayed cenv overallTy env tpenv mExpr expr exprty (_atomicFlag: ExprAtomicFlag) delayed =
 
     // OK, we've typechecked the thing on the left of the delayed lookup chain. 
     // We can now record for posterity the type of this expression and the location of the expression. 

@@ -9,7 +9,7 @@ open FSharp.Compiler.AbstractIL.Internal.Library
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AttributeChecking
 open FSharp.Compiler.AccessibilityLogic
-open FSharp.Compiler.CompilerImports
+open FSharp.Compiler.CompileOps
 open FSharp.Compiler.Infos
 open FSharp.Compiler.InfoReader
 open FSharp.Compiler.Lib
@@ -78,11 +78,7 @@ module Impl =
     let makeReadOnlyCollection (arr: seq<'T>) = 
         System.Collections.ObjectModel.ReadOnlyCollection<_>(Seq.toArray arr) :> IList<_>
         
-    let makeXmlDoc (doc: XmlDoc) =
-        makeReadOnlyCollection doc.UnprocessedLines
-
-    let makeElaboratedXmlDoc (doc: XmlDoc) =
-        makeReadOnlyCollection (doc.GetElaboratedXmlLines())
+    let makeXmlDoc (XmlDoc x) = makeReadOnlyCollection x
     
     let rescopeEntity optViewedCcu (entity: Entity) = 
         match optViewedCcu with 
@@ -421,7 +417,7 @@ and FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
         | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.QualifiedName
         | CompiledTypeRepr.ILAsmOpen _ -> fail()
         
-    member x.QualifiedBaseName =
+    member x.QualifiedBaseName = 
          checkIsResolved()
          let fail() = invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
  #if !NO_EXTENSIONTYPING
@@ -429,11 +425,11 @@ and FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
  #else
          if entity.IsTypeAbbrev || entity.IsNamespace then fail()
  #endif
-         match entity.CompiledRepresentation with
+         match entity.CompiledRepresentation with 
          | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.BasicQualifiedName
          | CompiledTypeRepr.ILAsmOpen _ -> fail()
-
-    member x.FullName =
+        
+    member x.FullName = 
         checkIsResolved()
         match x.TryFullName with 
         | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
@@ -666,11 +662,7 @@ and FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
         if isUnresolved() then XmlDoc.Empty  |> makeXmlDoc else
         entity.XmlDoc |> makeXmlDoc
 
-    member __.ElaboratedXmlDoc =
-        if isUnresolved() then XmlDoc.Empty  |> makeElaboratedXmlDoc else
-        entity.XmlDoc |> makeElaboratedXmlDoc
-
-    member x.StaticParameters =
+    member x.StaticParameters = 
         match entity.TypeReprInfo with 
 #if !NO_EXTENSIONTYPING
         | TProvidedTypeExtensionPoint info -> 
@@ -845,11 +837,7 @@ and FSharpUnionCase(cenv, v: UnionCaseRef) =
         if isUnresolved() then XmlDoc.Empty  |> makeXmlDoc else
         v.UnionCase.XmlDoc |> makeXmlDoc
 
-    member __.ElaboratedXmlDoc =
-        if isUnresolved() then XmlDoc.Empty  |> makeElaboratedXmlDoc else
-        v.UnionCase.XmlDoc |> makeElaboratedXmlDoc
-
-    member __.Attributes =
+    member __.Attributes = 
         if isUnresolved() then makeReadOnlyCollection [] else
         v.Attribs |> List.map (fun a -> FSharpAttribute(cenv, AttribInfo.FSAttribInfo(cenv.g, a))) |> makeReadOnlyCollection
 
@@ -1031,15 +1019,7 @@ and FSharpField(cenv: SymbolEnv, d: FSharpFieldData)  =
         | Choice3Of3 _ -> XmlDoc.Empty
         |> makeXmlDoc
 
-    member __.ElaboratedXmlDoc =
-        if isUnresolved() then XmlDoc.Empty  |> makeElaboratedXmlDoc else
-        match d.TryRecdField with
-        | Choice1Of3 r -> r.XmlDoc
-        | Choice2Of3 _ -> XmlDoc.Empty
-        | Choice3Of3 _ -> XmlDoc.Empty
-        |> makeElaboratedXmlDoc
-
-    member __.FieldType =
+    member __.FieldType = 
         checkIsResolved()
         let fty = 
             match d.TryRecdField with 
@@ -1149,11 +1129,7 @@ and FSharpActivePatternCase(cenv, apinfo: PrettyNaming.ActivePatternInfo, ty, n,
         defaultArg (valOpt |> Option.map (fun vref -> vref.XmlDoc)) XmlDoc.Empty
         |> makeXmlDoc
 
-    member __.ElaboratedXmlDoc =
-        defaultArg (valOpt |> Option.map (fun vref -> vref.XmlDoc)) XmlDoc.Empty
-        |> makeElaboratedXmlDoc
-
-    member __.XmlDocSig =
+    member __.XmlDocSig = 
         let xmlsig = 
             match valOpt with
             | Some valref -> SymbolHelpers.GetXmlDocSigOfValRef cenv.g valref
@@ -1192,10 +1168,7 @@ and FSharpGenericParameter(cenv, v:Typar) =
     member __.IsCompilerGenerated = v.IsCompilerGenerated
        
     member __.IsMeasure = (v.Kind = TyparKind.Measure)
-
     member __.XmlDoc = v.XmlDoc |> makeXmlDoc
-
-    member __.ElaboratedXmlDoc = v.XmlDoc |> makeElaboratedXmlDoc
 
     member __.IsSolveAtCompileTime = (v.StaticReq = TyparStaticReq.HeadTypeStaticReq)
 
@@ -1472,7 +1445,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             FSharpMemberFunctionOrValue(cenv, C minfo, Item.CtorGroup(minfo.LogicalName, [minfo]))
         else
             FSharpMemberFunctionOrValue(cenv, M minfo, Item.MethodGroup(minfo.LogicalName, [minfo], None))
-
+            
     member __.IsUnresolved = 
         isUnresolved()
 
@@ -1673,18 +1646,18 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         match d with
         | V v -> v.IsParam
         | _ -> false
-
+        
     member __.IsTopLevelParameter =
         match d with
         | V v -> v.IsTopLevelParam
         | _ -> false
-
+        
     member __.IsNestedScopeParameter =
         match d with
         | V v -> v.IsNestedScopeParam
         | _ -> false
-
-    member x.EventForFSharpProperty =
+    
+    member x.EventForFSharpProperty = 
         match d with 
         | P p when p.IsFSharpEventProperty  ->
             let minfos1 = GetImmediateIntrinsicMethInfosOfType (Some("add_"+p.PropertyName), AccessibleFromSomeFSharpCode) cenv.g cenv.amap range0 p.ApparentEnclosingType 
@@ -1701,7 +1674,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         let makeProp p vref =
             let pinfo = FSProp(cenv.g, p, Some vref, None)
             FSharpMemberOrFunctionOrValue(cenv, P pinfo, Item.Property (pinfo.PropertyName, [pinfo]))
-        if isUnresolved() then None else
+        if isUnresolved() then None else 
         match d with
         | M (FSMeth (_, p, vref, _)) when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
             Some (makeProp p vref)
@@ -1709,20 +1682,8 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
         | _ -> None
 
-    member __.AccessorProperty =
-        let makeProp p vref =
-            let pinfo = FSProp(cenv.g, p, Some vref, None)
-            FSharpMemberOrFunctionOrValue(cenv, P pinfo, Item.Property (pinfo.PropertyName, [pinfo]))
-        if isUnresolved() then None else
-        match d with
-        | M (FSMeth (_, p, vref, _)) when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
-            Some (makeProp p vref)
-        | V vref when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
-            vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
-        | _ -> None
-
-    member __.IsEventAddMethod =
-        if isUnresolved() then false else
+    member __.IsEventAddMethod = 
+        if isUnresolved() then false else 
         match d with 
         | M m when m.LogicalName.StartsWithOrdinal("add_") -> 
             let eventName = m.LogicalName.[4..]
@@ -1916,15 +1877,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         | M m | C m -> m.XmlDoc |> makeXmlDoc
         | V v -> v.XmlDoc |> makeXmlDoc
 
-    member __.ElaboratedXmlDoc =
-        if isUnresolved() then XmlDoc.Empty  |> makeElaboratedXmlDoc else
-        match d with
-        | E e -> e.XmlDoc |> makeElaboratedXmlDoc
-        | P p -> p.XmlDoc |> makeElaboratedXmlDoc
-        | M m | C m -> m.XmlDoc |> makeElaboratedXmlDoc
-        | V v -> v.XmlDoc |> makeElaboratedXmlDoc
-
-    member x.CurriedParameterGroups =
+    member x.CurriedParameterGroups = 
         checkIsResolved()
         match d with 
         | P p -> 
@@ -2280,28 +2233,28 @@ and FSharpType(cenv, ty:TType) =
              yield FSharpType(cenv, ty) ]
         |> makeReadOnlyCollection
 
-    member x.IsUnit = typeEquiv cenv.g ty cenv.g.unit_ty
+    member x.IsUnit = typeEquiv cenv.g ty cenv.g.unit_ty 
 
     member x.IsNativePtr =
         try typeEquiv cenv.g ty cenv.g.nativeint_ty
         with _ -> false
 
-    member x.BaseType =
+    member x.BaseType = 
         GetSuperTypeOfType cenv.g cenv.amap range0 ty
         |> Option.map (fun ty -> FSharpType(cenv, ty)) 
 
-    member x.StrippedType = FSharpType(cenv, stripTyEqnsWrtErasure EraseAll cenv.g ty)
-
+    member x.StrippedType = FSharpType(cenv, stripTyEqnsWrtErasure EraseAll cenv.g ty) 
+    
     member x.QualifiedBaseName =
-        protect <| fun () ->
-            match stripTyparEqns ty with
+        protect <| fun () -> 
+            match stripTyparEqns ty with 
             | TType_app (tcref, _) ->
-                match tcref.CompiledRepresentation with
+                match tcref.CompiledRepresentation with 
                 | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.BasicQualifiedName
-                | CompiledTypeRepr.ILAsmOpen _ -> fail()
+                | CompiledTypeRepr.ILAsmOpen _ -> fail() 
             | _ -> invalidOp "not a stripped type"
 
-    member x.Instantiate(instantiation:(FSharpGenericParameter * FSharpType) list) =
+    member x.Instantiate(instantiation:(FSharpGenericParameter * FSharpType) list) = 
         let typI = instType (instantiation |> List.map (fun (tyv, ty) -> tyv.V, ty.V)) ty
         FSharpType(cenv, typI)
 
@@ -2519,7 +2472,7 @@ and FSharpParameter(cenv, paramTy: TType, topArgInfo: ArgReprInfo, ownerOpt, own
     // todo: cover IL attrs? use different name? (we need it for symbols defined in F# source only)
     member __.IsCliOptional = HasFSharpAttributeOpt cenv.g cenv.g.attrib_OptionalAttribute topArgInfo.Attribs
     member __.IsParamArray = HasFSharpAttribute cenv.g cenv.g.attrib_ParamArrayAttribute topArgInfo.Attribs
-    member __.IsOut = HasFSharpAttribute cenv.g cenv.g.attrib_OutAttribute topArgInfo.Attribs
+    member __.IsOut = HasFSharpAttribute cenv.g cenv.g.attrib_OutAttribute topArgInfo.Attribs 
 
     member private x.ValReprInfo = topArgInfo
 
@@ -2623,26 +2576,11 @@ and FSharpAssembly internal (cenv, ccu: CcuThunk) =
 
 /// Represents open declaration in F# code.
 [<Sealed>]
-type FSharpOpenDeclaration(target: SynOpenDeclTarget, range: range option, modules: FSharpEntity list, types: FSharpType list, appliedScope: range, isOwnNamespace: bool) =
+type FSharpOpenDeclaration(longId: Ident list, range: range option, modules: FSharpEntity list, appliedScope: range, isOwnNamespace: bool) =
 
-    member __.Target = target
-
-    member __.LongId =
-        match target with
-        | SynOpenDeclTarget.ModuleOrNamespace(longId, _) -> longId
-        | SynOpenDeclTarget.Type(synType, _) ->
-            let rec get ty =
-                match ty with
-                | SynType.LongIdent (LongIdentWithDots(lid, _)) -> lid
-                | SynType.App (ty2, _, _, _, _, _, _) -> get ty2
-                | SynType.LongIdentApp (ty2, _, _, _, _, _, _) -> get ty2
-                | SynType.Paren (ty2, _) -> get ty2
-                | _ -> []
-            get synType
+    member __.LongId = longId
 
     member __.Range = range
-
-    member __.Types = types
 
     member __.Modules = modules
 

@@ -14,21 +14,15 @@ open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.AbstractIL.Internal.Library
 open FSharp.Compiler.AbstractIL.Internal.Utils
-open FSharp.Compiler.CompilerConfig
-open FSharp.Compiler.CompilerDiagnostics
-open FSharp.Compiler.CompilerImports
-open FSharp.Compiler.CompilerOptions
+open FSharp.Compiler.CompileOps
+open FSharp.Compiler.CompileOptions
 open FSharp.Compiler.Driver
 open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.Lib
-open FSharp.Compiler.ParseAndCheckInputs
 open FSharp.Compiler.Range
-open FSharp.Compiler.ScriptClosure
 open FSharp.Compiler.SyntaxTree
 open FSharp.Compiler.TcGlobals 
 open FSharp.Compiler.Text
-
-open Microsoft.DotNet.DependencyManager
 
 open Internal.Utilities
 open Internal.Utilities.Collections
@@ -255,7 +249,7 @@ type ScriptClosureCacheToken() = interface LockToken
 
 
 // There is only one instance of this type, held in FSharpChecker
-type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification, enablePartialTypeChecking) as self =
+type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification) as self =
     // STATIC ROOT: FSharpLanguageServiceTestable.FSharpChecker.backgroundCompiler.reactor: The one and only Reactor
     let reactor = Reactor.Singleton
 
@@ -281,14 +275,6 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
     let scriptClosureCacheLock = Lock<ScriptClosureCacheToken>()
     let frameworkTcImportsCache = FrameworkImportsCache(frameworkTcImportsCacheStrongSize)
 
-    // We currently share one global dependency provider for all scripts for the FSharpChecker.
-    // For projects, one is used per project.
-    // 
-    // Sharing one for all scripts is necessary for good performance from GetProjectOptionsFromScript,
-    // which requires a dependency provider to process through the project options prior to working out
-    // if the cached incremental builder can be used for the project.
-    let dependencyProviderForScripts = new DependencyProvider()
-
     /// CreateOneIncrementalBuilder (for background type checking). Note that fsc.fs also
     /// creates an incremental builder used by the command line compiler.
     let CreateOneIncrementalBuilder (ctok, options:FSharpProjectOptions, userOpName) = 
@@ -307,24 +293,21 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
                     { new IProjectReference with 
                         member x.EvaluateRawContents(ctok) = 
                           cancellable {
-                            Trace.TraceInformation("FCS: {0}.{1} ({2})", userOpName, "GetAssemblyData", nm)
-                            return! self.GetAssemblyData(opts, ctok, userOpName + ".CheckReferencedProject("+nm+")")
+                            Trace.TraceInformation("FCS: {0}.{1} ({2})", userOpName, "ParseAndCheckProjectImpl", nm)
+                            let! r = self.ParseAndCheckProjectImpl(opts, ctok, userOpName + ".CheckReferencedProject("+nm+")")
+                            return r.RawFSharpAssemblyData 
                           }
                         member x.TryGetLogicalTimeStamp(cache, ctok) = 
                             self.TryGetLogicalTimeStampForProject(cache, ctok, opts, userOpName + ".TimeStampReferencedProject("+nm+")")
                         member x.FileName = nm } ]
 
         let loadClosure = scriptClosureCacheLock.AcquireLock (fun ltok -> scriptClosureCache.TryGet (ltok, options))
-
         let! builderOpt, diagnostics = 
-            IncrementalBuilder.TryCreateIncrementalBuilderForProjectOptions
+            IncrementalBuilder.TryCreateBackgroundBuilderForProjectOptions
                   (ctok, legacyReferenceResolver, FSharpCheckerResultsSettings.defaultFSharpBinariesDir, frameworkTcImportsCache, loadClosure, Array.toList options.SourceFiles, 
                    Array.toList options.OtherOptions, projectReferences, options.ProjectDirectory, 
                    options.UseScriptResolutionRules, keepAssemblyContents, keepAllBackgroundResolutions, FSharpCheckerResultsSettings.maxTimeShareMilliseconds,
-                   tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses,
-                   enableBackgroundItemKeyStoreAndSemanticClassification,
-                   enablePartialTypeChecking,
-                   (if options.UseScriptResolutionRules then Some dependencyProviderForScripts else None))
+                   tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification)
 
         match builderOpt with 
         | None -> ()
@@ -511,14 +494,7 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
          textSnapshotInfo: obj option,
          fileVersion: int,
          builder: IncrementalBuilder,
-         tcConfig,
-         tcGlobals,
-         tcImports,
-         tcDependencyFiles,
-         timeStamp,
-         prevTcState,
-         prevModuleNamesDict,
-         prevTcErrors,
+         tcPrior: PartialCheckResults,
          creationErrors: FSharpErrorInfo[],
          userOpName: string) = 
     
@@ -541,29 +517,29 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
                                 let! checkAnswer = 
                                     FSharpCheckFileResults.CheckOneFile
                                         (parseResults,
-                                            sourceText,
-                                            fileName,
-                                            options.ProjectFileName, 
-                                            tcConfig,
-                                            tcGlobals,
-                                            tcImports, 
-                                            prevTcState,
-                                            prevModuleNamesDict,
-                                            loadClosure,
-                                            prevTcErrors,
-                                            reactorOps, 
-                                            textSnapshotInfo,
-                                            userOpName,
-                                            options.IsIncompleteTypeCheckEnvironment, 
-                                            builder, 
-                                            Array.ofList tcDependencyFiles, 
-                                            creationErrors, 
-                                            parseResults.Errors, 
-                                            keepAssemblyContents,
-                                            suggestNamesForErrors)
-                                let parsingOptions = FSharpParsingOptions.FromTcConfig(tcConfig, Array.ofList builder.SourceFiles, options.UseScriptResolutionRules)
-                                reactor.SetPreferredUILang tcConfig.preferredUiLang
-                                bc.RecordTypeCheckFileInProjectResults(fileName, options, parsingOptions, parseResults, fileVersion, timeStamp, Some checkAnswer, sourceText.GetHashCode()) 
+                                         sourceText,
+                                         fileName,
+                                         options.ProjectFileName, 
+                                         tcPrior.TcConfig,
+                                         tcPrior.TcGlobals,
+                                         tcPrior.TcImports, 
+                                         tcPrior.TcState,
+                                         tcPrior.ModuleNamesDict,
+                                         loadClosure,
+                                         tcPrior.TcErrors,
+                                         reactorOps, 
+                                         textSnapshotInfo,
+                                         userOpName,
+                                         options.IsIncompleteTypeCheckEnvironment, 
+                                         builder, 
+                                         Array.ofList tcPrior.TcDependencyFiles, 
+                                         creationErrors, 
+                                         parseResults.Errors, 
+                                         keepAssemblyContents,
+                                         suggestNamesForErrors)
+                                let parsingOptions = FSharpParsingOptions.FromTcConfig(tcPrior.TcConfig, Array.ofList builder.SourceFiles, options.UseScriptResolutionRules)
+                                reactor.SetPreferredUILang tcPrior.TcConfig.preferredUiLang
+                                bc.RecordTypeCheckFileInProjectResults(fileName, options, parsingOptions, parseResults, fileVersion, tcPrior.TimeStamp, Some checkAnswer, sourceText.GetHashCode()) 
                                 return checkAnswer
                             finally
                                 let dummy = ref ()
@@ -608,17 +584,12 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
                         execWithReactorAsync <| fun ctok -> 
                           cancellable {
                             DoesNotRequireCompilerThreadTokenAndCouldPossiblyBeMadeConcurrent  ctok
-                            let tcPrior = builder.GetCheckResultsBeforeFileInProjectEvenIfStale filename
-                            return
-                                tcPrior
-                                |> Option.map (fun tcPrior ->
-                                    (tcPrior, tcPrior.TcInfo ctok)
-                                )
+                            return  builder.GetCheckResultsBeforeFileInProjectEvenIfStale filename
                           }
                             
                     match tcPrior with
-                    | Some(tcPrior, tcInfo) -> 
-                        let! checkResults = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior.TcConfig, tcPrior.TcGlobals, tcPrior.TcImports, tcInfo.tcDependencyFiles, tcPrior.TimeStamp, tcInfo.tcState, tcInfo.moduleNamesDict, tcInfo.TcErrors, creationErrors, userOpName)
+                    | Some tcPrior -> 
+                        let! checkResults = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior, creationErrors, userOpName)
                         return Some checkResults
                     | None -> return None  // the incremental builder was not up to date
             finally 
@@ -643,13 +614,8 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
                     | Some (_, checkResults) -> return FSharpCheckFileAnswer.Succeeded checkResults
                     | _ ->
                         Trace.TraceInformation("FCS: {0}.{1} ({2})", userOpName, "CheckFileInProject.CacheMiss", filename)
-                        let! tcPrior, tcInfo =
-                            execWithReactorAsync <| fun ctok -> 
-                                cancellable {
-                                    let! tcPrior = builder.GetCheckResultsBeforeFileInProject (ctok, filename)
-                                    return (tcPrior, tcPrior.TcInfo ctok)
-                                }
-                        let! checkAnswer = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior.TcConfig, tcPrior.TcGlobals, tcPrior.TcImports, tcInfo.tcDependencyFiles, tcPrior.TimeStamp, tcInfo.tcState, tcInfo.moduleNamesDict, tcInfo.TcErrors, creationErrors, userOpName)
+                        let! tcPrior = execWithReactorAsync <| fun ctok -> builder.GetCheckResultsBeforeFileInProject (ctok, filename)
+                        let! checkAnswer = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior, creationErrors, userOpName)
                         return checkAnswer
             finally 
                 bc.ImplicitlyStartCheckProjectInBackground(options, userOpName)
@@ -686,19 +652,14 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
                     | _ ->
                         // todo this blocks the Reactor queue until all files up to the current are type checked. It's OK while editing the file,
                         // but results with non cooperative blocking when a firts file from a project opened.
-                        let! tcPrior, tcInfo =
-                            execWithReactorAsync <| fun ctok -> 
-                                cancellable {
-                                    let! tcPrior = builder.GetCheckResultsBeforeFileInProject (ctok, filename)
-                                    return (tcPrior, tcPrior.TcInfo ctok)
-                                } 
+                        let! tcPrior = execWithReactorAsync <| fun ctok -> builder.GetCheckResultsBeforeFileInProject (ctok, filename) 
                     
                         // Do the parsing.
                         let parsingOptions = FSharpParsingOptions.FromTcConfig(builder.TcConfig, Array.ofList (builder.SourceFiles), options.UseScriptResolutionRules)
                         reactor.SetPreferredUILang tcPrior.TcConfig.preferredUiLang
                         let parseErrors, parseTreeOpt, anyErrors = ParseAndCheckFile.parseFile (sourceText, filename, parsingOptions, userOpName, suggestNamesForErrors)
                         let parseResults = FSharpParseFileResults(parseErrors, parseTreeOpt, anyErrors, builder.AllDependenciesDeprecated)
-                        let! checkResults = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior.TcConfig, tcPrior.TcGlobals, tcPrior.TcImports, tcInfo.tcDependencyFiles, tcPrior.TimeStamp, tcInfo.tcState, tcInfo.moduleNamesDict, tcInfo.TcErrors, creationErrors, userOpName)
+                        let! checkResults = bc.CheckOneFileImpl(parseResults, sourceText, filename, options, textSnapshotInfo, fileVersion, builder, tcPrior, creationErrors, userOpName)
 
                         Logger.LogBlockMessageStop (filename + strGuid + "-Successful") LogCompilerFunctionId.Service_ParseAndCheckFileInProject
 
@@ -713,71 +674,58 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
           cancellable {
             let! builderOpt, creationErrors = getOrCreateBuilder (ctok, options, userOpName)
             match builderOpt with
-            | None ->
+            | None -> 
                 let parseResults = FSharpParseFileResults(creationErrors, None, true, [| |])
                 let typedResults = FSharpCheckFileResults.MakeEmpty(filename, creationErrors, reactorOps, keepAssemblyContents)
                 return (parseResults, typedResults)
             | Some builder -> 
                 let! (parseTreeOpt, _, _, untypedErrors) = builder.GetParseResultsForFile (ctok, filename)
                 let! tcProj = builder.GetCheckResultsAfterFileInProject (ctok, filename)
-
-                let tcInfo, tcInfoOptional = tcProj.TcInfoWithOptional ctok
-
-                let tcResolutionsRev = tcInfoOptional.tcResolutionsRev
-                let tcSymbolUsesRev = tcInfoOptional.tcSymbolUsesRev
-                let tcOpenDeclarationsRev = tcInfoOptional.tcOpenDeclarationsRev
-                let latestCcuSigForFile = tcInfo.latestCcuSigForFile
-                let tcState = tcInfo.tcState
-                let tcEnvAtEnd = tcInfo.tcEnvAtEndOfFile
-                let latestImplementationFile = tcInfoOptional.latestImplFile
-                let tcDependencyFiles = tcInfo.tcDependencyFiles
-                let tcErrors = tcInfo.TcErrors
                 let errorOptions = builder.TcConfig.errorSeverityOptions
                 let untypedErrors = [| yield! creationErrors; yield! ErrorHelpers.CreateErrorInfos (errorOptions, false, filename, untypedErrors, suggestNamesForErrors) |]
-                let tcErrors = [| yield! creationErrors; yield! ErrorHelpers.CreateErrorInfos (errorOptions, false, filename, tcErrors, suggestNamesForErrors) |]
+                let tcErrors = [| yield! creationErrors; yield! ErrorHelpers.CreateErrorInfos (errorOptions, false, filename, tcProj.TcErrors, suggestNamesForErrors) |]
                 let parseResults = FSharpParseFileResults(errors = untypedErrors, input = parseTreeOpt, parseHadErrors = false, dependencyFiles = builder.AllDependenciesDeprecated)
                 let loadClosure = scriptClosureCacheLock.AcquireLock (fun ltok -> scriptClosureCache.TryGet (ltok, options) )
                 let typedResults = 
                     FSharpCheckFileResults.Make
                         (filename, 
-                            options.ProjectFileName, 
-                            tcProj.TcConfig, 
-                            tcProj.TcGlobals, 
-                            options.IsIncompleteTypeCheckEnvironment, 
-                            builder, 
-                            Array.ofList tcDependencyFiles, 
-                            creationErrors, 
-                            parseResults.Errors, 
-                            tcErrors,
-                            reactorOps,
-                            keepAssemblyContents,
-                            Option.get latestCcuSigForFile, 
-                            tcState.Ccu, 
-                            tcProj.TcImports, 
-                            tcEnvAtEnd.AccessRights,
-                            List.head tcResolutionsRev, 
-                            List.head tcSymbolUsesRev,
-                            tcEnvAtEnd.NameEnv,
-                            loadClosure, 
-                            latestImplementationFile,
-                            List.head tcOpenDeclarationsRev) 
+                         options.ProjectFileName, 
+                         tcProj.TcConfig, 
+                         tcProj.TcGlobals, 
+                         options.IsIncompleteTypeCheckEnvironment, 
+                         builder, 
+                         Array.ofList tcProj.TcDependencyFiles, 
+                         creationErrors, 
+                         parseResults.Errors, 
+                         tcErrors,
+                         reactorOps,
+                         keepAssemblyContents,
+                         Option.get tcProj.LatestCcuSigForFile, 
+                         tcProj.TcState.Ccu, 
+                         tcProj.TcImports, 
+                         tcProj.TcEnvAtEnd.AccessRights,
+                         List.head tcProj.TcResolutionsRev, 
+                         List.head tcProj.TcSymbolUsesRev,
+                         tcProj.TcEnvAtEnd.NameEnv,
+                         loadClosure, 
+                         tcProj.LatestImplementationFile,
+                         List.head tcProj.TcOpenDeclarationsRev) 
                 return (parseResults, typedResults)
-          }
-        )
+           })
 
     member __.FindReferencesInFile(filename: string, options: FSharpProjectOptions, symbol: FSharpSymbol, canInvalidateProject: bool, userOpName: string) =
         reactor.EnqueueAndAwaitOpAsync(userOpName, "FindReferencesInFile", filename, fun ctok -> 
-            cancellable {
+          cancellable {
             let! builderOpt, _ = getOrCreateBuilderWithInvalidationFlag (ctok, options, canInvalidateProject, userOpName)
             match builderOpt with
             | None -> return Seq.empty
             | Some builder -> 
                 if builder.ContainsFile filename then
                     let! checkResults = builder.GetCheckResultsAfterFileInProject (ctok, filename)
-                    let _, tcInfoOptional = checkResults.TcInfoWithOptional ctok
-                    match tcInfoOptional.itemKeyStore with
-                    | None -> return Seq.empty
-                    | Some reader -> return reader.FindAll symbol.Item
+                    return 
+                        match checkResults.ItemKeyStore with
+                        | None -> Seq.empty
+                        | Some reader -> reader.FindAll symbol.Item
                 else
                     return Seq.empty })
 
@@ -785,13 +733,13 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
     member __.GetSemanticClassificationForFile(filename: string, options: FSharpProjectOptions, userOpName: string) =
         reactor.EnqueueAndAwaitOpAsync(userOpName, "GetSemanticClassificationForFile", filename, fun ctok -> 
             cancellable {
-                let! builderOpt, _ = getOrCreateBuilder (ctok, options, userOpName)
-                match builderOpt with
-                | None -> return [||]
-                | Some builder -> 
-                    let! checkResults = builder.GetCheckResultsAfterFileInProject (ctok, filename)
-                    let _, tcInfoOptional = checkResults.TcInfoWithOptional ctok
-                    return tcInfoOptional.semanticClassification })
+            let! builderOpt, _ = getOrCreateBuilder (ctok, options, userOpName)
+            match builderOpt with
+            | None -> return [||]
+            | Some builder -> 
+                let! checkResults = builder.GetCheckResultsAfterFileInProject (ctok, filename)
+                return checkResults.SemanticClassification })
+
 
     /// Try to get recent approximate type check results for a file. 
     member __.TryGetRecentCheckResultsForFile(filename: string, options:FSharpProjectOptions, sourceText: ISourceText option, _userOpName: string) =
@@ -804,42 +752,22 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
         | None -> parseCacheLock.AcquireLock (fun ltok -> checkFileInProjectCachePossiblyStale.TryGet(ltok,(filename,options)))
 
     /// Parse and typecheck the whole project (the implementation, called recursively as project graph is evaluated)
-    member private __.ParseAndCheckProjectImpl(options, ctok, userOpName) =
+    member private __.ParseAndCheckProjectImpl(options, ctok, userOpName) : Cancellable<FSharpCheckProjectResults> =
       cancellable {
-          let! builderOpt,creationErrors = getOrCreateBuilder (ctok, options, userOpName)
-          match builderOpt with 
-          | None -> 
-              return FSharpCheckProjectResults (options.ProjectFileName, None, keepAssemblyContents, creationErrors, None)
-          | Some builder -> 
-              let! (tcProj, ilAssemRef, tcAssemblyDataOpt, tcAssemblyExprOpt) = builder.GetCheckResultsAndImplementationsForProject(ctok)
-              let errorOptions = tcProj.TcConfig.errorSeverityOptions
-              let fileName = TcGlobals.DummyFileNameForRangesWithoutASpecificLocation
-
-              let tcInfo, tcInfoOptional = tcProj.TcInfoWithOptional ctok
-
-              let tcSymbolUses = tcInfoOptional.TcSymbolUses
-              let topAttribs = tcInfo.topAttribs
-              let tcState = tcInfo.tcState
-              let tcEnvAtEnd = tcInfo.tcEnvAtEndOfFile
-              let tcErrors = tcInfo.TcErrors
-              let tcDependencyFiles = tcInfo.tcDependencyFiles
-              let errors = [| yield! creationErrors; yield! ErrorHelpers.CreateErrorInfos (errorOptions, true, fileName, tcErrors, suggestNamesForErrors) |]
-              return FSharpCheckProjectResults (options.ProjectFileName, Some tcProj.TcConfig, keepAssemblyContents, errors, 
-                                                    Some(tcProj.TcGlobals, tcProj.TcImports, tcState.Ccu, tcState.CcuSig, 
-                                                            tcSymbolUses, topAttribs, tcAssemblyDataOpt, ilAssemRef, 
-                                                            tcEnvAtEnd.AccessRights, tcAssemblyExprOpt, Array.ofList tcDependencyFiles))
+        let! builderOpt,creationErrors = getOrCreateBuilder (ctok, options, userOpName)
+        match builderOpt with 
+        | None -> 
+            return FSharpCheckProjectResults (options.ProjectFileName, None, keepAssemblyContents, creationErrors, None)
+        | Some builder -> 
+            let! (tcProj, ilAssemRef, tcAssemblyDataOpt, tcAssemblyExprOpt)  = builder.GetCheckResultsAndImplementationsForProject(ctok)
+            let errorOptions = tcProj.TcConfig.errorSeverityOptions
+            let fileName = TcGlobals.DummyFileNameForRangesWithoutASpecificLocation
+            let errors = [| yield! creationErrors; yield! ErrorHelpers.CreateErrorInfos (errorOptions, true, fileName, tcProj.TcErrors, suggestNamesForErrors) |]
+            return FSharpCheckProjectResults (options.ProjectFileName, Some tcProj.TcConfig, keepAssemblyContents, errors, 
+                                              Some(tcProj.TcGlobals, tcProj.TcImports, tcProj.TcState.Ccu, tcProj.TcState.CcuSig, 
+                                                   tcProj.TcSymbolUses, tcProj.TopAttribs, tcAssemblyDataOpt, ilAssemRef, 
+                                                   tcProj.TcEnvAtEnd.AccessRights, tcAssemblyExprOpt, Array.ofList tcProj.TcDependencyFiles))
       }
-
-    member _.GetAssemblyData(options, ctok, userOpName) =
-        cancellable {
-            let! builderOpt,_ = getOrCreateBuilder (ctok, options, userOpName)
-            match builderOpt with 
-            | None -> 
-                return None
-            | Some builder -> 
-                let! (_, _, tcAssemblyDataOpt, _) = builder.GetCheckResultsAndImplementationsForProject(ctok)
-                return tcAssemblyDataOpt
-        }
 
     /// Get the timestamp that would be on the output if fully built immediately
     member private __.TryGetLogicalTimeStampForProject(cache, ctok, options, userOpName: string) =
@@ -850,7 +778,6 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
         match builderOpt with 
         | None -> None
         | Some builder -> Some (builder.GetLogicalTimeStampForProject(cache, ctok))
-
 
     /// Parse and typecheck the whole project.
     member bc.ParseAndCheckProject(options, userOpName) =
@@ -883,15 +810,16 @@ type BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyC
 #endif
             let loadedTimeStamp = defaultArg loadedTimeStamp DateTime.MaxValue // Not 'now', we don't want to force reloading
             let applyCompilerOptions tcConfigB  = 
-                let fsiCompilerOptions = CompilerOptions.GetCoreFsiCompilerOptions tcConfigB 
-                CompilerOptions.ParseCompilerOptions (ignore, fsiCompilerOptions, Array.toList otherFlags)
+                let fsiCompilerOptions = CompileOptions.GetCoreFsiCompilerOptions tcConfigB 
+                CompileOptions.ParseCompilerOptions (ignore, fsiCompilerOptions, Array.toList otherFlags)
 
             let loadClosure = 
                 LoadClosure.ComputeClosureOfScriptText(ctok, legacyReferenceResolver, 
                     FSharpCheckerResultsSettings.defaultFSharpBinariesDir, filename, sourceText, 
                     CodeContext.Editing, useSimpleResolution, useFsiAuxLib, useSdkRefs, new Lexhelp.LexResourceManager(), 
                     applyCompilerOptions, assumeDotNetFramework, 
-                    tryGetMetadataSnapshot, reduceMemoryUsage, dependencyProviderForScripts)
+                    tryGetMetadataSnapshot=tryGetMetadataSnapshot, 
+                    reduceMemoryUsage=reduceMemoryUsage)
 
             let otherFlags = 
                 [| yield "--noframework"; yield "--warn:3"; 
@@ -1032,10 +960,9 @@ type FSharpChecker(legacyReferenceResolver,
                     tryGetMetadataSnapshot,
                     suggestNamesForErrors,
                     keepAllBackgroundSymbolUses,
-                    enableBackgroundItemKeyStoreAndSemanticClassification,
-                    enablePartialTypeChecking) =
+                    enableBackgroundItemKeyStoreAndSemanticClassification) =
 
-    let backgroundCompiler = BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification, enablePartialTypeChecking)
+    let backgroundCompiler = BackgroundCompiler(legacyReferenceResolver, projectCacheSize, keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification)
 
     static let globalInstance = lazy FSharpChecker.Create()
             
@@ -1052,7 +979,7 @@ type FSharpChecker(legacyReferenceResolver,
     let maxMemEvent = new Event<unit>()
 
     /// Instantiate an interactive checker.    
-    static member Create(?projectCacheSize, ?keepAssemblyContents, ?keepAllBackgroundResolutions, ?legacyReferenceResolver, ?tryGetMetadataSnapshot, ?suggestNamesForErrors, ?keepAllBackgroundSymbolUses, ?enableBackgroundItemKeyStoreAndSemanticClassification, ?enablePartialTypeChecking, ?reactorListenerOpt: IReactorListener) = 
+    static member Create(?projectCacheSize, ?keepAssemblyContents, ?keepAllBackgroundResolutions, ?legacyReferenceResolver, ?tryGetMetadataSnapshot, ?suggestNamesForErrors, ?keepAllBackgroundSymbolUses, ?enableBackgroundItemKeyStoreAndSemanticClassification, ?reactorListenerOpt: IReactorListener) = 
 
         let legacyReferenceResolver = 
             match legacyReferenceResolver with
@@ -1066,16 +993,12 @@ type FSharpChecker(legacyReferenceResolver,
         let suggestNamesForErrors = defaultArg suggestNamesForErrors false
         let keepAllBackgroundSymbolUses = defaultArg keepAllBackgroundSymbolUses true
         let enableBackgroundItemKeyStoreAndSemanticClassification = defaultArg enableBackgroundItemKeyStoreAndSemanticClassification false
-        let enablePartialTypeChecking = defaultArg enablePartialTypeChecking false
-
-        if keepAssemblyContents && enablePartialTypeChecking then
-            invalidArg "enablePartialTypeChecking" "'keepAssemblyContents' and 'enablePartialTypeChecking' cannot be both enabled."
 
         match reactorListenerOpt with
         | None -> ()
         | Some reactorListener -> Reactor.Singleton.SetListener reactorListener
 
-        new FSharpChecker(legacyReferenceResolver, projectCacheSizeReal,keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification, enablePartialTypeChecking)
+        new FSharpChecker(legacyReferenceResolver, projectCacheSizeReal,keepAssemblyContents, keepAllBackgroundResolutions, tryGetMetadataSnapshot, suggestNamesForErrors, keepAllBackgroundSymbolUses, enableBackgroundItemKeyStoreAndSemanticClassification)
 
     member __.ReferenceResolver = legacyReferenceResolver
 
@@ -1432,4 +1355,4 @@ module PrettyNaming =
     let KeywordNames = Lexhelp.Keywords.keywordNames
 
 module FSharpFileUtilities =
-    let isScriptFile (fileName: string) = ParseAndCheckInputs.IsScript fileName
+    let isScriptFile (fileName: string) = CompileOps.IsScript fileName
