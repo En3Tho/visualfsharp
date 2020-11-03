@@ -1650,7 +1650,22 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         match d with 
         | M _ | C _ | P _ | E _ -> true
         | V v -> v.IsMember 
-    
+
+    member __.IsParameter =
+        match d with
+        | V v -> v.IsParam
+        | _ -> false
+
+    member __.IsTopLevelParameter =
+        match d with
+        | V v -> v.IsTopLevelParam
+        | _ -> false
+
+    member __.IsNestedScopeParameter =
+        match d with
+        | V v -> v.IsNestedScopeParam
+        | _ -> false
+
     member __.IsDispatchSlot = 
         if isUnresolved() then false else 
         match d with 
