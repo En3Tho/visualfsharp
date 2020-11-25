@@ -116,7 +116,7 @@ type Item =
     | ImplicitOp of Ident * TraitConstraintSln option ref
 
     /// Represents the resolution of a name to a named argument
-    | ArgName of Ident * TType * ArgumentContainer option
+    | ArgName of Id: Ident * TType * ArgContainer: ArgumentContainer option * LogicalName: string
 
     /// Represents the resolution of a name to a named property setter
     | SetterArg of Ident * Item 

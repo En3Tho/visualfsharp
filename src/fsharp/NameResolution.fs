@@ -219,7 +219,7 @@ type Item =
     | ImplicitOp of Ident * TraitConstraintSln option ref
 
     /// Represents the resolution of a name to a named argument
-    | ArgName of Ident * TType * ArgumentContainer option
+    | ArgName of Id: Ident * TType * ArgContainer: ArgumentContainer option * LogicalName: string
 
     /// Represents the resolution of a name to a named property setter
     | SetterArg of Ident * Item
@@ -259,7 +259,7 @@ type Item =
         | Item.UnqualifiedType(tcref :: _) -> tcref.DisplayName
         | Item.TypeVar (nm, _) -> nm
         | Item.ModuleOrNamespaces(modref :: _) -> modref.DemangledModuleOrNamespaceName
-        | Item.ArgName (id, _, _)  -> id.idText
+        | Item.ArgName (Id = id)  -> id.idText
         | Item.SetterArg (id, _) -> id.idText
         | Item.CustomOperation (customOpName, _, _) -> customOpName
         | Item.CustomBuilder (nm, _) -> nm
@@ -1781,10 +1781,10 @@ let ItemsAreEffectivelyEqual g orig other =
         | Some vref1, Some vref2 -> valRefDefnEq g vref1 vref2
         | _ -> false
 
-    | Item.ArgName (id1, _, _), Item.ArgName (id2, _, _) ->
+    | Item.ArgName (Id = id1), Item.ArgName (Id = id2) ->
         (id1.idText = id2.idText && Range.equals id1.idRange id2.idRange)
 
-    | (Item.ArgName (id, _, _), ValUse vref) | (ValUse vref, Item.ArgName (id, _, _)) ->
+    | (Item.ArgName (Id = id), ValUse vref) | (ValUse vref, Item.ArgName (Id = id)) ->
         ((Range.equals id.idRange vref.DefinitionRange || Range.equals id.idRange vref.SigRange) && id.idText = vref.DisplayName)
 
     | Item.AnonRecdField(anon1, _, i1, _), Item.AnonRecdField(anon2, _, i2, _) -> anonInfoEquiv anon1 anon2 && i1 = i2
@@ -1822,7 +1822,7 @@ let ItemsAreEffectivelyEqualHash (g: TcGlobals) orig =
     | ActivePatternCaseUse (_, _, idx)-> hash idx
     | MethodUse minfo -> minfo.ComputeHashCode()
     | PropertyUse pinfo -> pinfo.ComputeHashCode()
-    | Item.ArgName (id, _, _) -> hash id.idText
+    | Item.ArgName (Id = id) -> hash id.idText
     | ILFieldUse ilfinfo -> ilfinfo.ComputeHashCode()
     | UnionCaseUse ucase ->  hash ucase.CaseName
     | RecordFieldUse (name, _) -> hash name
@@ -1927,7 +1927,7 @@ type TcResultsSinkImpl(g, ?sourceText: ISourceText) =
         let keyOpt =
             match item with
             | Item.Value vref -> Some (endPos, vref.DisplayName)
-            | Item.ArgName (id, _, _) -> Some (endPos, id.idText)
+            | Item.ArgName (Id = id) -> Some (endPos, id.idText)
             | _ -> None
 
         match keyOpt with

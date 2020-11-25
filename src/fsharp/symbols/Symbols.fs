@@ -305,8 +305,8 @@ type FSharpSymbol(cenv: SymbolEnv, item: (unit -> Item), access: (FSharpSymbol -
         | Item.ActivePatternResult (apinfo, ty, n, _) ->
              FSharpActivePatternCase(cenv, apinfo, ty, n, None, item) :> _
 
-        | Item.ArgName(id, ty, argOwner) ->
-            FSharpParameter(cenv, id, ty, argOwner) :> _
+        | Item.ArgName(id, ty, argOwner, logicalName) ->
+            FSharpParameter(cenv, id, ty, argOwner, Some logicalName) :> _
 
         | Item.ImplicitOp(_, { contents = Some(TraitConstraintSln.FSMethSln(_, vref, _)) }) ->
             FSharpMemberOrFunctionOrValue(cenv, V vref, item) :> _
@@ -1920,7 +1920,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
                 // INCOMPLETENESS: Attribs is empty here, so we can't look at attributes for
                 // either .NET or F# parameters
                 let argInfo: ArgReprInfo = { Name=nmOpt; Attribs= [] }
-                yield FSharpParameter(cenv, pty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, optArgInfo.IsOptional) ] 
+                yield FSharpParameter(cenv, pty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, optArgInfo.IsOptional, None) ]
                |> makeReadOnlyCollection  ]
            |> makeReadOnlyCollection
 
@@ -1932,7 +1932,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
                 // INCOMPLETENESS: Attribs is empty here, so we can't look at attributes for
                 // either .NET or F# parameters
                         let argInfo: ArgReprInfo = { Name=nmOpt; Attribs= [] }
-                        yield FSharpParameter(cenv, pty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, optArgInfo.IsOptional) ] 
+                        yield FSharpParameter(cenv, pty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, optArgInfo.IsOptional, None) ]
                    |> makeReadOnlyCollection ]
              |> makeReadOnlyCollection
 
@@ -1964,7 +1964,7 @@ and FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
                         let isInArg = HasFSharpAttribute cenv.g cenv.g.attrib_InAttribute argInfo.Attribs && isByrefTy cenv.g argty
                         let isOutArg = HasFSharpAttribute cenv.g cenv.g.attrib_OutAttribute argInfo.Attribs && isByrefTy cenv.g argty
                         let isOptionalArg = HasFSharpAttribute cenv.g cenv.g.attrib_OptionalArgumentAttribute argInfo.Attribs
-                        yield FSharpParameter(cenv, argty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg) ] 
+                        yield FSharpParameter(cenv, argty, argInfo, None, x.DeclarationLocationOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg, None) ]
                    |> makeReadOnlyCollection ]
              |> makeReadOnlyCollection
 
@@ -2420,7 +2420,7 @@ and FSharpStaticParameter(cenv, sp: Tainted< ExtensionTyping.ProvidedParameterIn
                               protect <| fun () -> 
                                 let spKind = Import.ImportProvidedType cenv.amap m (sp.PApply((fun x -> x.ParameterType), m))
                                 let nm = sp.PUntaint((fun p -> p.Name), m)
-                                Item.ArgName((mkSynId m nm, spKind, None))), 
+                                Item.ArgName((mkSynId m nm, spKind, None, nm))),
                          (fun _ _ _ -> true))
 
     member __.Name = 
@@ -2454,26 +2454,28 @@ and FSharpStaticParameter(cenv, sp: Tainted< ExtensionTyping.ProvidedParameterIn
         "static parameter " + x.Name 
 #endif
 
-and FSharpParameter(cenv, paramTy: TType, topArgInfo: ArgReprInfo, ownerOpt, ownerRangeOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg) = 
+and FSharpParameter(cenv, paramTy: TType, topArgInfo: ArgReprInfo, ownerOpt, ownerRangeOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg, logicalName) =
     inherit FSharpSymbol(cenv, 
                          (fun () -> 
                             let m = defaultArg ownerRangeOpt range0
                             let id = match topArgInfo.Name with | Some id -> id | None -> mkSynId m ""
-                            Item.ArgName(id, paramTy, ownerOpt)), 
+                            Item.ArgName(id, paramTy, ownerOpt, logicalName |> Option.defaultValue id.idText)),
                          (fun _ _ _ -> true))
 
-    new (cenv, id, ty, container) =
+    new (cenv, id, ty, container, logicalName) =
         let argInfo: ArgReprInfo = { Name = Some id; Attribs = [] }
-        FSharpParameter(cenv, ty, argInfo, container, None, false, false, false, false)
+        FSharpParameter(cenv, ty, argInfo, container, None, false, false, false, false, logicalName)
 
-    new (cenv, ty, argInfo: ArgReprInfo, ownerRangeOpt) =
-        FSharpParameter(cenv, ty, argInfo, None, ownerRangeOpt, false, false, false, false)
+    new (cenv, ty: TType, argInfo: ArgReprInfo, ownerRangeOpt: range option) =
+        FSharpParameter(cenv, ty, argInfo, None, ownerRangeOpt, false, false, false, false, None)
+
+    member _.LogicalName = logicalName
 
     member __.Name = match topArgInfo.Name with None -> None | Some v -> Some v.idText
 
     member __.cenv: SymbolEnv = cenv
 
-    member __.AdjustType ty = FSharpParameter(cenv, ty, topArgInfo, ownerOpt, ownerRangeOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg)
+    member __.AdjustType ty = FSharpParameter(cenv, ty, topArgInfo, ownerOpt, ownerRangeOpt, isParamArrayArg, isInArg, isOutArg, isOptionalArg, logicalName)
 
     member __.Type: FSharpType = FSharpType(cenv, paramTy)
 

@@ -1832,8 +1832,8 @@ let CombineSyntacticAndInferredArities g declKind rhsExpr prelimScheme =
                     | [], _ -> []
                     // Dont infer eliminated unit args from the expression if they don't occur syntactically.
                     | ai, [] -> ai
-                    // If we infer a tupled argument from the expression and/or type then use that
-                    | _ when ai1.Length < ai2.Length -> ai2
+                    // If we infer a tupled argument from the expression and/or type and at least one arg has a name then use that
+                    | _ when ai1.Length < ai2.Length && ai2 |> List.exists (fun (valInfo: ArgReprInfo) -> valInfo.Name.IsSome) -> ai2
                     | _ -> ai1
                 let rec loop ais1 ais2 =
                     match ais1, ais2 with 
@@ -4452,7 +4452,7 @@ and TcPseudoMemberSpec cenv newOk env synTypes tpenv memSpfn m =
             let argTys = List.map fst argTys
             let logicalCompiledName = ComputeLogicalName id memberFlags
 
-            let item = Item.ArgName (id, memberConstraintTy, None)
+            let item = Item.ArgName (id, memberConstraintTy, None, logicalCompiledName)
             CallNameResolutionSink cenv.tcSink (id.idRange, env.NameEnv, item, emptyTyparInst, ItemOccurence.Use, env.AccessRights)
 
             TTrait(tys, logicalCompiledName, memberFlags, argTys, returnTy, ref None), tpenv
@@ -4919,7 +4919,7 @@ and TcStaticConstantParameter cenv (env: TcEnv) tpenv kind (StripParenTypes v) i
     let record ttype =
         match idOpt with
         | Some id ->
-            let item = Item.ArgName (id, ttype, Some container)
+            let item = Item.ArgName (id, ttype, Some container, id.idText)
             CallNameResolutionSink cenv.tcSink (id.idRange, env.NameEnv, item, emptyTyparInst, ItemOccurence.Use, env.AccessRights)
         | _ -> ()
 
@@ -8543,7 +8543,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
             let varSpace = 
                 addVarsToVarSpace varSpace (fun _mCustomOp env -> 
                     use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None) 
+                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None)
                     vspecs, envinner)
 
             Some (trans CompExprTranslationPass.Initial q varSpace innerComp
@@ -8702,7 +8702,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
                     | [NormalizedBinding(_vis, NormalBinding, false, false, _, _, _, _, pat, _, _, _)] -> 
                         // successful case
                         use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                        let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None) 
+                        let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None)
                         vspecs, envinner
                     | _ -> 
                         // error case
@@ -8733,7 +8733,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
             let varSpace = 
                 addVarsToVarSpace varSpace (fun _mCustomOp env -> 
                         use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                        let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None) 
+                        let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (pat, None)
                         vspecs, envinner)
 
             let rhsExpr = mkSourceExprConditional isFromSource rhsExpr
@@ -8792,7 +8792,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
                     let varSpace = 
                         addVarsToVarSpace varSpace (fun _mCustomOp env -> 
                                 use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                                let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None) 
+                                let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None)
                                 vspecs, envinner)
 
                     Some (transBind q varSpace bindRange bindNName sources consumePat letSpBind innerComp translatedCtxt)
@@ -8808,7 +8808,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
                         let varSpace = 
                             addVarsToVarSpace varSpace (fun _mCustomOp env -> 
                                     use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None) 
+                                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None)
                                     vspecs, envinner)
 
                         Some (transBind q varSpace bindRange bindNName sources consumePat letSpBind innerComp translatedCtxt)
@@ -8866,7 +8866,7 @@ and TcComputationExpression cenv env overallTy mWhole (interpExpr: Expr) builder
                         let varSpace = 
                             addVarsToVarSpace varSpace (fun _mCustomOp env -> 
                                     use _holder = TemporarilySuspendReportingTypecheckResultsToSink cenv.tcSink
-                                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None) 
+                                    let _, _, vspecs, envinner, _ = TcMatchPattern cenv (NewInferenceType()) env tpenv (consumePat, None)
                                     vspecs, envinner)
 
                         // Build the 'Bind' call
@@ -11038,8 +11038,9 @@ and TcMethodApplication
     allArgs |> List.iter (fun assignedArg ->
         match assignedArg.NamedArgIdOpt with 
         | None -> ()
-        | Some id -> 
-            let item = Item.ArgName (defaultArg assignedArg.CalledArg.NameOpt id, assignedArg.CalledArg.CalledArgumentType, Some(ArgumentContainer.Method finalCalledMethInfo))
+        | Some id ->
+            let id = defaultArg assignedArg.CalledArg.NameOpt id
+            let item = Item.ArgName (id, assignedArg.CalledArg.CalledArgumentType, Some(ArgumentContainer.Method finalCalledMethInfo), id.idText)
             CallNameResolutionSink cenv.tcSink (id.idRange, env.NameEnv, item, emptyTyparInst, ItemOccurence.Use, ad))
 
 

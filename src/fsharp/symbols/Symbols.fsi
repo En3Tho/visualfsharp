@@ -913,6 +913,8 @@ and [<Class>] public FSharpParameter =
     /// The optional name of the parameter 
     member Name: string option
 
+    member LogicalName: string option
+
     /// The declaration location of the parameter 
     member DeclarationLocation : range 
 
