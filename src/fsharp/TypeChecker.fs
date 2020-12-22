@@ -635,10 +635,10 @@ let BuildRootModuleExpr enclosingNamespacePath (cpath: CompilationPath) mexpr =
 let TryStripPrefixPath (g: TcGlobals) (enclosingNamespacePath: Ident list) = 
     match enclosingNamespacePath with 
     | p :: rest when
-        g.isInteractive &&
-        not (isNil rest) &&
-        p.idText.StartsWithOrdinal FsiDynamicModulePrefix && 
-        p.idText.[FsiDynamicModulePrefix.Length..] |> String.forall System.Char.IsDigit 
+        g.isInteractive
+        && not (isNil rest)
+        && p.idText.StartsWithOrdinal FsiDynamicModulePrefix
+        && p.idText.[FsiDynamicModulePrefix.Length..] |> String.forall System.Char.IsDigit
         -> Some(p, rest)
     | _ -> None
 

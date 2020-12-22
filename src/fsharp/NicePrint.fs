@@ -1165,21 +1165,20 @@ module private PrintTypes =
             let typesWithDiscrimants =
                 [
                     yield 0, retTy 
-                    for ty,_ in argInfos do
+                    for ty, _ in argInfos do
                         yield 1, ty
                     for ty in genParamTys do
                         yield 2, ty
                 ]
-            let typesWithDiscrimants,typarsAndCxs = PrettyTypes.PrettifyDiscriminantAndTypePairs denv.g typesWithDiscrimants
+            let typesWithDiscrimants, typarsAndCxs = PrettyTypes.PrettifyDiscriminantAndTypePairs denv.g typesWithDiscrimants
             let retTy = typesWithDiscrimants |> List.find (function (0, _) -> true | _ -> false) |> snd
             let argInfos = 
                 typesWithDiscrimants 
-                |> List.choose (function (1,ty) -> Some ty | _ -> None)
-                |> List.zip argInfos 
-                |> List.map (fun ((_,argInfo),tTy) -> tTy, argInfo)
+                |> List.choose (function (1, ty) -> Some ty | _ -> None)
+                |> List.map2 (fun (_, argInfo) tTy -> tTy, argInfo) argInfos
             let genParamTys = 
                 typesWithDiscrimants
-                |> List.choose (function (2,ty) -> Some ty | _ -> None)
+                |> List.choose (function (2, ty) -> Some ty | _ -> None)
               
             argInfos, retTy, genParamTys, typarsAndCxs
 

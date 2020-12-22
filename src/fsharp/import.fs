@@ -106,7 +106,7 @@ let ImportTypeRefData (env: ImportMap) m (scoref, path, typeName) =
         try   
             fakeTyconRef.Deref
         with _ ->
-            error (Error(FSComp.SR.impReferencedTypeCouldNotBeFoundInAssembly(String.concat "." (Array.append path  [| typeName |]), ccu.AssemblyName), m))
+            error (Error(FSComp.SR.impReferencedTypeCouldNotBeFoundInAssembly(String.concat "." (Array.append path [| typeName |]), ccu.AssemblyName), m))
 #if !NO_EXTENSIONTYPING
     // Validate (once because of caching)
     match tycon.TypeReprInfo with
@@ -117,7 +117,7 @@ let ImportTypeRefData (env: ImportMap) m (scoref, path, typeName) =
             ()
 #endif
     match tryRescopeEntity ccu tycon with 
-    | ValueNone -> error (Error(FSComp.SR.impImportedAssemblyUsesNotPublicType(String.concat "." (Array.toList path@[typeName])), m))
+    | ValueNone -> error (Error(FSComp.SR.impImportedAssemblyUsesNotPublicType(String.concat "." (Array.toList path @ [typeName])), m))
     | ValueSome tcref -> tcref
     
 
@@ -241,7 +241,9 @@ let rec ImportProvidedTypeAsILType (env: ImportMap) (m: range) (st: Tainted<Prov
         if tps.Length <> genericArgs.Length then 
            error(Error(FSComp.SR.impInvalidNumberOfGenericArguments(tcref.CompiledName, tps.Length, genericArgs.Length), m))
         // We're converting to an IL type, where generic arguments are erased
-        let genericArgs = List.zip tps genericArgs |> List.filter (fun (tp, _) -> not tp.IsErased) |> List.map snd
+        let genericArgs = (tps, genericArgs)
+                          ||> List.fold2 (fun lst tp genericArg -> if not tp.IsErased then genericArg :: lst else lst) []
+                          |> List.rev // fold2 + rev is faster than foldBack in this case.
 
         let tspec = mkILTySpec(tref, genericArgs)
         if st.PUntaint((fun st -> st.IsValueType), m) then 

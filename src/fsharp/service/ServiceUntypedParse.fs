@@ -82,10 +82,14 @@ type CompletionContext =
     // completing named parameters\setters in parameter list of constructor\method calls
     // end of name ast node * list of properties\parameters that were already set
     | ParameterList of pos * HashSet<string>
+    // Almost the same as ParameterList but in context of union field case in match lamda
+    // UnionCaseNamedFieldsList of node: pos * usedNames: HashSet<string>
     | AttributeApplication
     | OpenDeclaration of isOpenType: bool
     /// completing pattern type (e.g. foo (x: |))
     | PatternType
+    // when we are inside union case match like: UnionName(..)
+    // UnionCaseMatch // of UnionCase or  UnionCaseField list ?
 
 //----------------------------------------------------------------------------
 // FSharpParseFileResults
@@ -1227,6 +1231,8 @@ module UntypedParseImpl =
                                     Some (CompletionContext.ParameterList args)
                                 | _ -> 
                                     defaultTraverse expr
+                            // UnionCase is basically same as new ctor, but with exception that it's a case declaration instead of ctor declaration
+
                             
                             | _ -> defaultTraverse expr
 
@@ -1366,7 +1372,7 @@ module UntypedParseImpl =
                  | idx when idx < str.Length -> str.[idx + 1..].TrimStart()
                  | _ -> ""   
 
-             let isLongIdent = Seq.forall (fun c -> IsIdentifierPartCharacter c || c = '.' || c = ':') // ':' may occur in "[<type: AnAttribute>]"
+             let isLongIdent = String.forall (fun c -> IsIdentifierPartCharacter c || c = '.' || c = ':') // ':' may occur in "[<type: AnAttribute>]"
 
              // match the most nested paired [< and >] first
              let matches = 

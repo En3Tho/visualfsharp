@@ -243,7 +243,7 @@ type internal TypeCheckInfo
 
         match resolveOverloads with 
         | ResolveOverloads.Yes ->
-            filter endOfNamesPos sResolutions.CapturedNameResolutions 
+            filter endOfNamesPos sResolutions.CapturedNameResolutions
 
         | ResolveOverloads.No ->
             let items = filter endOfNamesPos sResolutions.CapturedMethodGroupResolutions
@@ -572,7 +572,22 @@ type internal TypeCheckInfo
           Unresolved = match assemblySymbol with ValueSome x -> Some x.UnresolvedSymbol | _ -> None }
 
     let DefaultCompletionItem item = CompletionItem ValueNone ValueNone item
-    
+
+    let GetCapturedUnionCaseResolutionsAtLine (endOfNamesPos: pos) =
+        sResolutions.CapturedNameResolutions |> ResizeArray.filter (fun (cnr: CapturedNameResolution) ->
+            let range = cnr.Range
+            range.EndLine = endOfNamesPos.Line && match cnr.Item with | Item.UnionCase _ -> true | _ -> false)
+
+    let GetCapturedUnionCaseFieldsResolutionsAtLine (endOfNamesPos: pos) =
+        let unionCaseItems = endOfNamesPos |> GetCapturedUnionCaseResolutionsAtLine
+        sResolutions.CapturedNameResolutions |> ResizeArray.filter (fun cnr ->
+            match cnr.Item with
+            | Item.UnionCaseField (UnionCaseInfo(_, fieldUnionCaseRef), _) -> unionCaseItems |> ResizeArray.exists (fun cnr ->
+                match cnr.Item with
+                | Item.UnionCase (unionCaseRef, _) -> fieldUnionCaseRef.UnionCase.DefinitionRange = unionCaseRef.UnionCase.DefinitionRange
+                | _ -> false)
+            | _ -> false)
+
     let getItem (x: ItemWithInst) = x.Item
     let GetDeclaredItems (parseResultsOpt: FSharpParseFileResults option, lineStr: string, origLongIdentOpt, colAtEndOfNamesAndResidue, residueOpt, lastDotPos, line, loc, 
                           filterCtors, resolveOverloads, hasTextChangedSinceLastTypecheck, isInRangeOperator, allSymbols: unit -> AssemblySymbol list) =
@@ -637,7 +652,7 @@ type internal TypeCheckInfo
             match nameResItems with            
             | NameResResult.TypecheckStaleAndTextChanged -> None // second-chance intellisense will try again
             | NameResResult.Cancel(denv,m) -> Some([], denv, m)
-            | NameResResult.Members(FilterRelevantItems getItem exactMatchResidueOpt (items, denv, m)) -> 
+            | NameResResult.Members(FilterRelevantItems getItem exactMatchResidueOpt (items, denv, m)) ->
                 // lookup based on name resolution results successful
                 Some (items |> List.map (CompletionItem (getType()) ValueNone), denv, m)
             | _ ->
@@ -923,7 +938,7 @@ type internal TypeCheckInfo
         |> Option.map (fun (ty, _, _, _) -> FSharpType (cenv, ty))
 
     /// Get the auto-complete items at a location
-    member __.GetDeclarations (ctok, parseResultsOpt, line, lineStr, partialName, getAllSymbols, unresolvedOnly, hasTextChangedSinceLastTypecheck) =
+    member this.GetDeclarations (ctok, parseResultsOpt, line, lineStr, partialName, getAllSymbols, unresolvedOnly, hasTextChangedSinceLastTypecheck) =
         let isInterfaceFile = SourceFileImpl.IsInterfaceFile mainInputFileName
         ErrorScope.Protect Range.range0 
             (fun () ->
@@ -938,9 +953,14 @@ type internal TypeCheckInfo
                 | None -> FSharpDeclarationListInfo.Empty  
                 | Some (items, denv, ctx, m) ->
                     let items = if isInterfaceFile then items |> List.filter (fun x -> IsValidSignatureFileItem x.Item) else items
+                    let unionCaseFieldsItems = mkPos line m.EndColumn
+                                               |> GetCapturedUnionCaseFieldsResolutionsAtLine
+                                               |> ResizeArray.toList
+                                               |> List.filter (fun _ -> unresolvedOnly |> not)
+                                               |> List.map (fun cnr -> cnr.ItemWithInst |> DefaultCompletionItem)
                     let denv = { denv with shortTypeNames = true }
                     let isAttributeApplication = ctx = Some CompletionContext.AttributeApplication
-                    FSharpDeclarationListInfo.Create(infoReader,m,denv,cenv, unresolvedOnly,items,reactorOps,isAttributeApplication))
+                    FSharpDeclarationListInfo.Create(infoReader, m, denv, cenv, unresolvedOnly, items, unionCaseFieldsItems, reactorOps, isAttributeApplication))
             (fun msg -> 
                 Trace.TraceInformation(sprintf "FCS: recovering from error in GetDeclarations: '%s'" msg)
                 FSharpDeclarationListInfo.Error msg)
@@ -1823,7 +1843,7 @@ type FSharpCheckFileResults
         let getAllEntities = defaultArg getAllEntities (fun() -> [])
         let hasTextChangedSinceLastTypecheck = defaultArg hasTextChangedSinceLastTypecheck (fun _ -> false)
         reactorOp userOpName "GetDeclarations" FSharpDeclarationListInfo.Empty (fun ctok scope -> 
-            scope.GetDeclarations(ctok, parseResultsOpt, line, lineStr, partialName, getAllEntities, unresolvedOnly, hasTextChangedSinceLastTypecheck))
+           scope.GetDeclarations(ctok, parseResultsOpt, line, lineStr, partialName, getAllEntities, unresolvedOnly, hasTextChangedSinceLastTypecheck))
 
     member __.GetDeclarationListSymbols(parseResultsOpt, line, lineStr, partialName, ?getAllEntities, ?hasTextChangedSinceLastTypecheck, ?userOpName: string) = 
         let userOpName = defaultArg userOpName "Unknown"

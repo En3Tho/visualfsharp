@@ -137,7 +137,7 @@ module internal DescriptionListsImpl =
               name = nm,
               canonicalTypeTextForSorting = printCanonicalizedTypeName g denv tau,
               display = paramPrefix ^^ tyL,
-              isOptional=isOptArg
+              isOptional = isOptArg
             ))
 
         prettyTyparInst, prettyParams, prettyRetTyL, prettyConstraintsL
@@ -150,14 +150,13 @@ module internal DescriptionListsImpl =
 
         // Remake the params using the prettified versions
         let parameters = 
-            (prettyParamTys, prettyParamTysL) 
-            ||> List.zip 
-            |> List.map (fun (tau, tyL) -> 
+            (prettyParamTys, prettyParamTysL)
+            ||> List.map2 (fun tau tyL ->
                 FSharpMethodGroupItemParameter(
                     name = "",
                     canonicalTypeTextForSorting = printCanonicalizedTypeName g denv tau,
-                    display =  tyL,
-                    isOptional=false
+                    display = tyL,
+                    isOptional = false
                 ))
 
         // Return the results
@@ -513,7 +512,7 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
     member __.DisplayContext = displayContext
 
     // Make a 'Declarations' object for a set of selected items
-    static member Create(infoReader:InfoReader, m: range, denv, cenv: SymbolEnv, unresolvedOnly: bool, items: CompletionItem list, reactor, isAttributeApplicationContext: bool) =
+    static member Create(infoReader:InfoReader, m: range, denv, cenv: SymbolEnv, unresolvedOnly: bool, items: CompletionItem list, unionCaseFieldItems: CompletionItem list, reactor, isAttributeApplicationContext: bool) =
         let g = infoReader.g
 
         let tyconRefOptEq tref1 tref2 =
@@ -523,14 +522,14 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
 
         // Adjust items priority. Sort by name. For things with the same name,
         //     - show types with fewer generic parameters first
-        //     - show types before over other related items - they usually have very useful XmlDocs 
-        let _, _, itemsWithPriority = 
-            items 
+        //     - show types before over other related items - they usually have very useful XmlDocs
+        let _, _, itemsWithPriority =
+            items
             |> List.map (fun x ->
                 match x.Item with
                 | Item.Types (_, (TType_app(tcref, _) :: _)) -> { x with MinorPriority = 1 + tcref.TyparsNoRange.Length }
                 // Put delegate ctors after types, sorted by #typars. RemoveDuplicateItems will remove FakeInterfaceCtor and DelegateCtor if an earlier type is also reported with this name
-                | Item.FakeInterfaceCtor (TType_app(tcref, _)) 
+                | Item.FakeInterfaceCtor (TType_app(tcref, _))
                 | Item.DelegateCtor (TType_app(tcref, _)) -> { x with MinorPriority = 1000 + tcref.TyparsNoRange.Length }
                 // Put type ctors after types, sorted by #typars. RemoveDuplicateItems will remove DefaultStructCtors if a type is also reported with this name
                 | Item.CtorGroup (_, (cinfo :: _)) -> { x with MinorPriority = 1000 + 10 * cinfo.DeclaringTyconRef.TyparsNoRange.Length }
@@ -555,14 +554,14 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
             |> SymbolHelpers.RemoveDuplicateCompletionItems g
             |> List.groupBy (fun x ->
                 match x.Unresolved with
-                | Some u -> 
+                | Some u ->
                     match u.Namespace with
                     | [||] -> u.DisplayName
                     | ns -> (ns |> String.concat ".") + "." + u.DisplayName
                 | None -> x.Item.DisplayName)
-            |> List.map (fun (_, items) -> 
+            |> List.map (fun (_, items) ->
                 let item = items.Head
-                let name = 
+                let name =
                     match item.Unresolved with
                     | Some u -> u.DisplayName
                     | None -> item.Item.DisplayName
@@ -572,7 +571,39 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
 //                | Some u -> u.DisplayName
 //                | None -> x.Item.DisplayName)
 
+        let cutAttributeSuffix isAttributeApplicationContext infoReader (item: CompletionItem) (name: string) =
+            if isAttributeApplicationContext &&
+                    name.EndsWithOrdinal("Attribute") && name.Length > "Attribute".Length &&
+                    SymbolHelpers.IsAttribute infoReader item.Item then
+                name.[0..name.Length - "Attribute".Length - 1]
+            else
+                name
+
         let result = List()
+
+        let addItem item name partitionedItems =
+            let name = cutAttributeSuffix isAttributeApplicationContext infoReader item name
+            let namespaceToOpen =
+                item.Unresolved
+                |> Option.map (fun x ->
+                    let ns = x.Namespace
+                    if Array.startsWith fsharpNamespace ns then Array.Empty() else ns)
+                |> Option.defaultValue (System.Array.Empty())
+            let item =
+                FSharpDeclarationListItem(
+                    name, Choice1Of2 (partitionedItems, infoReader, m, denv, reactor),
+                    item, FSharpSymbol.Create(cenv, item.ItemWithInst.Item), namespaceToOpen)
+            result.Add(item)
+
+        for unionCaseFieldItem in unionCaseFieldItems do
+            match unionCaseFieldItem.Item with
+//            | Item.UnionCase (UnionCaseInfo(_, unionCaseRef), _) ->
+//                // construct items for union case named fields
+//                // for some reason unioncaseitem here is in fact union type, not an exact unioncase?
+//                unionCaseRef.AllFieldsAsList |> List.iter (fun unionField -> addItem unionCaseItem unionField.Name [])
+            | Item.UnionCaseField (UnionCaseInfo(_, unionCaseRef), index) ->
+                addItem unionCaseFieldItem (unionCaseRef.FieldByIndex index).Name []
+            | _ -> ()
 
         for displayName, itemsWithSameName in groupedItems do
             if displayName = "[]" then () else
@@ -615,29 +646,7 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
                 else
                     displayName
 
-            let cutAttributeSuffix isAttributeApplicationContext infoReader (item: CompletionItem) (name: string) =
-                if isAttributeApplicationContext &&
-                        name.EndsWithOrdinal("Attribute") && name.Length > "Attribute".Length &&
-                        SymbolHelpers.IsAttribute infoReader item.Item then
-                    name.[0..name.Length - "Attribute".Length - 1]
-                else
-                    name
-
-            let name = cutAttributeSuffix isAttributeApplicationContext infoReader item name
-
-            let namespaceToOpen =
-                item.Unresolved
-                |> Option.map (fun x ->
-                    let ns = x.Namespace
-                    if Array.startsWith fsharpNamespace ns then Array.Empty() else ns)
-                |> Option.defaultValue (System.Array.Empty())
-
-            let item =
-                FSharpDeclarationListItem(
-                    name, Choice1Of2 (partitionedItems, infoReader, m, denv, reactor),
-                    item, FSharpSymbol.Create(cenv, item.ItemWithInst.Item), namespaceToOpen)
-
-            result.Add(item)
+            addItem item name partitionedItems
 
         FSharpDeclarationListInfo(result, false, FSharpDisplayContext(fun _ -> denv))
 
