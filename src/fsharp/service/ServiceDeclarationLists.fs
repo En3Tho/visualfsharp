@@ -10,7 +10,7 @@ namespace FSharp.Compiler.SourceCodeServices
 open System
 open System.Collections.Generic
 open System.Diagnostics
-open FSharp.Compiler 
+open FSharp.Compiler
 open FSharp.Compiler.AbstractIL.Internal.Library  
 open FSharp.Compiler.AbstractIL.Diagnostics 
 open FSharp.Compiler.AccessibilityLogic
@@ -32,21 +32,21 @@ open FSharp.Compiler.TypedTreeOps
 type FSharpMethodGroupItemParameter(name: string, canonicalTypeTextForSorting: string, display: layout, isOptional: bool) = 
 
     /// The name of the parameter.
-    member __.ParameterName = name
+    member _.ParameterName = name
 
     /// A key that can be used for sorting the parameters, used to help sort overloads.
-    member __.CanonicalTypeTextForSorting = canonicalTypeTextForSorting
+    member _.CanonicalTypeTextForSorting = canonicalTypeTextForSorting
 
     /// The structured representation for the parameter including its name, its type and visual indicators of other
     /// information such as whether it is optional.
-    member __.StructuredDisplay = display
+    member _.StructuredDisplay = display
 
     /// The text to display for the parameter including its name, its type and visual indicators of other
     /// information such as whether it is optional.
-    member __.Display = showL display
+    member _.Display = showL display
 
     /// Is the parameter optional
-    member __.IsOptional = isOptional
+    member _.IsOptional = isOptional
 
 [<AutoOpen>]
 module internal DescriptionListsImpl = 
@@ -479,40 +479,39 @@ module internal DescriptionListsImpl =
 type FSharpDeclarationListItem(name: string, info, item: CompletionItem, symbol: FSharpSymbol, namespaceToOpen: string[]) =
     member __.Name = name
 
-    member __.StructuredDescriptionTextAsync = 
-        let userOpName = "ToolTip"
+    member decl.StructuredDescriptionTextAsync = decl.StructuredDescriptionText |> async.Return
+
+    member _.StructuredDescriptionText =
         match info with
-        | Choice1Of2 (items: CompletionItem list, infoReader, m, denv, reactor:IReactorOperations) -> 
-            // reactor causes the lambda to execute on the background compiler thread, through the Reactor
-            reactor.EnqueueAndAwaitOpAsync (userOpName, "StructuredDescriptionTextAsync", name, fun ctok -> 
-                RequireCompilationThread ctok
-                cancellable.Return(FSharpToolTipText(items |> List.map (fun x -> SymbolHelpers.FormatStructuredDescriptionOfItem true infoReader m denv x.ItemWithInst)))
-            )
-            | Choice2Of2 result -> 
-                async.Return result
+        | Choice1Of2 (items: CompletionItem list, infoReader, m, denv) ->
+            FSharpToolTipText(items |> List.map (fun x -> SymbolHelpers.FormatStructuredDescriptionOfItem true infoReader m denv x.ItemWithInst))
+        | Choice2Of2 result ->
+            result
 
-    member decl.DescriptionTextAsync = 
-        decl.StructuredDescriptionTextAsync
-        |> Tooltips.Map Tooltips.ToFSharpToolTipText
+    member x.DescriptionTextAsync = x.DescriptionText |> async.Return
 
-    member __.FSharpSymbol = symbol
-    member __.Kind = item.Kind
-    member __.IsOwnMember = item.IsOwnMember
-    member __.MinorPriority = item.MinorPriority
-    member __.IsResolved = item.Unresolved.IsNone
-    member __.NamespaceToOpen = namespaceToOpen
+    member decl.DescriptionText =
+        decl.StructuredDescriptionText
+        |> Tooltips.ToFSharpToolTipText
+
+    member _.FSharpSymbol = symbol
+    member _.Kind = item.Kind
+    member _.IsOwnMember = item.IsOwnMember
+    member _.MinorPriority = item.MinorPriority
+    member _.IsResolved = item.Unresolved.IsNone
+    member _.NamespaceToOpen = namespaceToOpen
 
 /// A table of declarations for Intellisense completion 
 [<Sealed>]
 type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isError: bool, displayContext: FSharpDisplayContext) =
     static let fsharpNamespace = [|"Microsoft"; "FSharp"|]
 
-    member __.Items = declarations
-    member __.IsError = isError
+    member _.Items = declarations
+    member _.IsError = isError
     member __.DisplayContext = displayContext
 
     // Make a 'Declarations' object for a set of selected items
-    static member Create(infoReader:InfoReader, m: range, denv, cenv: SymbolEnv, unresolvedOnly: bool, items: CompletionItem list, unionCaseFieldItems: CompletionItem list, reactor, isAttributeApplicationContext: bool) =
+    static member Create(infoReader:InfoReader, m: range, denv, cenv: SymbolEnv, unresolvedOnly: bool, items: CompletionItem list, unionCaseFieldItems: CompletionItem list, isAttributeApplicationContext: bool) =
         let g = infoReader.g
 
         let tyconRefOptEq tref1 tref2 =
@@ -522,9 +521,9 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
 
         // Adjust items priority. Sort by name. For things with the same name,
         //     - show types with fewer generic parameters first
-        //     - show types before over other related items - they usually have very useful XmlDocs
+        //     - show types before over other related items - they usually have very useful XmlDocs 
         let _, _, itemsWithPriority =
-            items
+            items 
             |> List.map (fun x ->
                 match x.Item with
                 | Item.Types (_, (TType_app(tcref, _) :: _)) -> { x with MinorPriority = 1 + tcref.TyparsNoRange.Length }
@@ -634,7 +633,7 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
                 match itemsWithSameName |> List.partition (fun x -> x.Unresolved.IsNone) with
                 | [], unresolved -> unresolved
                 // if there are resolvable items, throw out unresolved to prevent duplicates like `Set` and `FSharp.Collections.Set`.
-                | resolved, _ -> resolved 
+                | resolved, _ -> resolved
 
             let item = partitionedItems.Head
             if unresolvedOnly && item.Unresolved.IsNone then () else
@@ -650,7 +649,7 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
 
         FSharpDeclarationListInfo(result, false, FSharpDisplayContext(fun _ -> denv))
 
-    static member Error msg = 
+    static member Error msg =
         FSharpDeclarationListInfo(
                 [| FSharpDeclarationListItem("<Note>", Choice2Of2 (FSharpToolTipText [FSharpStructuredToolTipElement.CompositionError msg]),
                                              Unchecked.defaultof<_>, Unchecked.defaultof<_>, System.Array.Empty()) |], true, Unchecked.defaultof<_>)
@@ -668,31 +667,31 @@ type FSharpMethodGroupItem(description: FSharpToolTipText<layout>, xmlDoc: FShar
                            hasParameters: bool, hasParamArrayArg: bool, staticParameters: FSharpMethodGroupItemParameter[]) = 
 
     /// The structured description representation for the method (or other item)
-    member __.StructuredDescription = description
+    member _.StructuredDescription = description
 
     /// The formatted description text for the method (or other item)
-    member __.Description = Tooltips.ToFSharpToolTipText description
+    member _.Description = Tooltips.ToFSharpToolTipText description
 
     /// The documentation for the item
-    member __.XmlDoc = xmlDoc
+    member _.XmlDoc = xmlDoc
 
     /// The The structured description representation for the method (or other item)
-    member __.StructuredReturnTypeText = returnType
+    member _.StructuredReturnTypeText = returnType
 
     /// The formatted type text for the method (or other item)
-    member __.ReturnTypeText = showL returnType
+    member _.ReturnTypeText = showL returnType
 
     /// The parameters of the method in the overload set
-    member __.Parameters = parameters
+    member _.Parameters = parameters
 
     /// Does the method support an arguments list?  This is always true except for static type instantiations like TP<42, "foo">.
-    member __.HasParameters = hasParameters
+    member _.HasParameters = hasParameters
 
     /// Does the method support a params list arg?
-    member __.HasParamArrayArg = hasParamArrayArg
+    member _.HasParamArrayArg = hasParamArrayArg
 
     /// Does the type name or method support a static arguments list, like TP<42, "foo"> or conn.CreateCommand<42, "foo">(arg1, arg2)?
-    member __.StaticParameters = staticParameters
+    member _.StaticParameters = staticParameters
 
 
 /// A table of methods for Intellisense completion
@@ -721,9 +720,9 @@ type FSharpMethodGroup( name: string, unsortedMethods: FSharpMethodGroupItem[] )
             let parms = meth.Parameters
             parms.Length, (parms |> Array.map (fun p -> p.CanonicalTypeTextForSorting)))
 
-    member __.MethodName = name
+    member _.MethodName = name
 
-    member __.Methods = methods
+    member _.Methods = methods
 
     static member Create (infoReader: InfoReader, m, denv, items:ItemWithInst list) = 
         let g = infoReader.g

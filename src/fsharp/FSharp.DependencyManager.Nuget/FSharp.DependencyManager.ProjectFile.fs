@@ -74,9 +74,13 @@ module internal ProjectFile =
             resolutions
             |> Array.filter(fun r ->
                 not(String.IsNullOrEmpty(r.NugetPackageId) ||
-                    String.IsNullOrEmpty(r.NativePath)) &&
-                Directory.Exists(r.NativePath))
-            |> Array.map(fun r -> r.NativePath)
+                    String.IsNullOrEmpty(r.NativePath)))
+            |> Array.map(fun r ->
+                            if Directory.Exists(r.NativePath) then Some (r.NativePath)
+                            elif File.Exists(r.NativePath) then Some (Path.GetDirectoryName(r.NativePath).Replace('\\', '/'))
+                            else None)
+            |> Array.filter(fun r -> r.IsSome)
+            |> Array.map(fun r -> r.Value)
 
         Array.concat [|managedRoots; nativeRoots|] |> Array.distinct
 
@@ -170,7 +174,7 @@ $(PACKAGEREFERENCES)
           Condition = "'$(Id)' != '' and '$(Version)' != ''">
         <NugetPackageId>$(Id)</NugetPackageId>
         <NugetPackageVersion>$(Version)</NugetPackageVersion>
-        <Path>$([MSBuild]::EnsureTrailingSlash("$([System.IO.Path]::GetDirectoryName('%(NuspecFiles.Identity)'))").Replace('\', '/'))</Path>
+        <PackageRoot>$([MSBuild]::EnsureTrailingSlash("$([System.IO.Path]::GetDirectoryName('%(NuspecFiles.Identity)'))").Replace('\', '/'))</PackageRoot>
         <AssetType>package</AssetType>
       </NugetPackageInfo>
     </ItemGroup>
@@ -225,13 +229,14 @@ $(PACKAGEREFERENCES)
         <NativeIncludeRoots
             Include="@(RuntimeTargetsCopyLocalItems)"
             Condition="'%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native'">
-            <Path>$([MSBuild]::EnsureTrailingSlash('$([System.String]::Copy('%(FullPath)').Substring(0, $([System.String]::Copy('%(FullPath)').LastIndexOf('runtimes'))))').Replace('\','/'))</Path>
+            <PackageRoot>$([MSBuild]::EnsureTrailingSlash("$([System.String]::Copy('%(FullPath)').Substring(0, $([System.String]::Copy('%(FullPath)').LastIndexOf('runtimes'))))").Replace('\','/'))</PackageRoot>
+            <Path>%(FullPath).Replace('\', '/'))</Path>
         </NativeIncludeRoots>
 
         <NativeIncludeRoots
             Include="@(NativeCopyLocalItems)"
             Condition="'%(NativeCopyLocalItems.AssetType)' == 'native'">
-            <Path>$([MSBuild]::EnsureTrailingSlash('$([System.String]::Copy('%(FullPath)').Substring(0, $([System.String]::Copy('%(FullPath)').LastIndexOf('runtimes'))))').Replace('\','/'))</Path>
+            <PackageRoot>$([MSBuild]::EnsureTrailingSlash("$([System.String]::Copy('%(FullPath)').Substring(0, $([System.String]::Copy('%(FullPath)').LastIndexOf('runtimes'))))").Replace('\','/'))</PackageRoot>
         </NativeIncludeRoots>
 
         <PropertyNames Include = "Pkg$([System.String]::Copy('%(PackageReference.FileName)').Replace('.','_'))" />
@@ -244,7 +249,6 @@ $(PACKAGEREFERENCES)
           <AssetType>package</AssetType>
           <PackageRoot>$([MSBuild]::EnsureTrailingSlash('$(%(PropertyNames.FileName))'))</PackageRoot>
           <PackageRoot>$([System.String]::Copy('%(ProvidedPackageRoots.PackageRoot)').Replace('\', '/'))</PackageRoot>
-          <Path>%(ProvidedPackageRoots.PackageRoot)</Path>
         </ProvidedPackageRoots>
       </ItemGroup>
   </Target>
@@ -258,15 +262,15 @@ $(PACKAGEREFERENCES)
       <ResolvedReferenceLines Remove='*' />
       <ResolvedReferenceLines
           Condition="(@(InteractiveResolvedFile->Count()) &gt; 0) AND (('%(InteractiveResolvedFile.NugetPackageId)'!='FSharp.Core') or ('$(SCRIPTEXTENSION)'!='.fsx' and '%(InteractiveResolvedFile.NugetPackageId)'=='FSharp.Core'))"
-          Include="%(InteractiveResolvedFile.NugetPackageId),%(InteractiveResolvedFile.NugetPackageVersion),%(InteractiveResolvedFile.PackageRoot),%(InteractiveResolvedFile.FullPath),%(InteractiveResolvedFile.AssetType),%(InteractiveResolvedFile.IsNotImplementationReference),%(InteractiveResolvedFile.InitializeSourcePath),"
+          Include="%(InteractiveResolvedFile.NugetPackageId),%(InteractiveResolvedFile.NugetPackageVersion),%(InteractiveResolvedFile.PackageRoot),$([System.String]::Copy('%(InteractiveResolvedFile.FullPath)').Replace('\','/')),%(InteractiveResolvedFile.AssetType),%(InteractiveResolvedFile.IsNotImplementationReference),%(InteractiveResolvedFile.InitializeSourcePath),"
           KeepDuplicates="false" />
       <ResolvedReferenceLines
           Condition="(@(NativeIncludeRoots->Count()) &gt; 0) AND (('%(NativeIncludeRoots.NugetPackageId)'!='FSharp.Core') or ('$(SCRIPTEXTENSION)'!='.fsx' and '%(NativeIncludeRoots.NugetPackageId)'=='FSharp.Core'))"
-          Include="%(NativeIncludeRoots.NugetPackageId),%(NativeIncludeRoots.NugetPackageVersion),%(NativeIncludeRoots.PackageRoot),,%(NativeIncludeRoots.AssetType),,,%(NativeIncludeRoots.Path)"
+          Include="%(NativeIncludeRoots.NugetPackageId),%(NativeIncludeRoots.NugetPackageVersion),%(NativeIncludeRoots.PackageRoot),,%(NativeIncludeRoots.AssetType),,,$([System.String]::Copy('%(NativeIncludeRoots.FullPath)').Replace('\','/'))"
           KeepDuplicates="false" />
       <ResolvedReferenceLines
           Condition="(@(NugetPackageInfo->Count()) &gt; 0) AND (('%(NugetPackageInfo.NugetPackageId)'!='FSharp.Core') or ('$(SCRIPTEXTENSION)'!='.fsx' and '%(ProvidedPackageRoots.NugetPackageId)'=='FSharp.Core'))"
-          Include="%(NugetPackageInfo.NugetPackageId),%(NugetPackageInfo.NugetPackageVersion),%(NugetPackageInfo.PackageRoot),,%(NugetPackageInfo.AssetType),,,%(NugetPackageInfo.Path)"
+          Include="%(NugetPackageInfo.NugetPackageId),%(NugetPackageInfo.NugetPackageVersion),%(NugetPackageInfo.PackageRoot),,%(NugetPackageInfo.AssetType),,,"
           KeepDuplicates="false" />
     </ItemGroup>
 

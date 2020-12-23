@@ -3,6 +3,7 @@
 /// API for declaration lists and method overload lists
 namespace FSharp.Compiler.SourceCodeServices
 
+open System
 open FSharp.Compiler.NameResolution
 open FSharp.Compiler.InfoReader
 open FSharp.Compiler.Range
@@ -20,7 +21,13 @@ type public FSharpDeclarationListItem =
     /// Get the description text, asynchronously.  Never returns "Loading...".
     member StructuredDescriptionTextAsync : Async<FSharpStructuredToolTipText>
 
+    /// Get the description text.
+    member StructuredDescriptionText : FSharpStructuredToolTipText
+
+    [<Obsolete("This operation is no longer asynchronous, please use the non-async version")>]
     member DescriptionTextAsync : Async<FSharpToolTipText>
+
+    member DescriptionText : FSharpToolTipText
 
     member FSharpSymbol : FSharpSymbol
 
@@ -48,8 +55,8 @@ type public FSharpDeclarationListInfo =
 
     member DisplayContext: FSharpDisplayContext
 
-    // Implementation details used by other code in the compiler    
-    static member internal Create : infoReader:InfoReader * m:range * denv:DisplayEnv * cenv: SymbolEnv * unresolvedOnly: bool * items:CompletionItem list * unionCaseFieldsItems:CompletionItem list * reactor:IReactorOperations * isAttributeApplicationContex:bool -> FSharpDeclarationListInfo
+    // Implementation details used by other code in the compiler
+    static member internal Create : infoReader:InfoReader * m:range * denv:DisplayEnv * cenv: SymbolEnv * unresolvedOnly: bool * items:CompletionItem list * unionCaseFieldsItems:CompletionItem list * isAttributeApplicationContex:bool -> FSharpDeclarationListInfo
 
     static member internal Error : message:string -> FSharpDeclarationListInfo
 

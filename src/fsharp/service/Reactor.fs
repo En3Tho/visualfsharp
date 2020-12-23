@@ -45,6 +45,7 @@ type Reactor() =
     let mutable culture = CultureInfo(CultureInfo.CurrentUICulture.Name)
 
     let mutable bgOpCts = new CancellationTokenSource()
+
     /// Mailbox dispatch function.
     let builder = 
         MailboxProcessor<_>.Start <| fun inbox ->
@@ -202,6 +203,7 @@ type Reactor() =
             )
             return! resultCell.AsyncResult 
         }
+
     member __.PauseBeforeBackgroundWork with get() = pauseBeforeBackgroundWork and set v = pauseBeforeBackgroundWork <- v
 
     static member Singleton = theReactor 

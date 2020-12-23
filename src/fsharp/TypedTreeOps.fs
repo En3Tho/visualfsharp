@@ -1665,6 +1665,7 @@ let isArrayTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> isA
 let isArray1DTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g tcref g.il_arr_tcr_map.[0] | _ -> false) 
 let isUnitTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g g.unit_tcr_canon tcref | _ -> false) 
 let isObjTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g g.system_Object_tcref tcref | _ -> false) 
+let isValueTypeTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g g.system_Value_tcref tcref | _ -> false) 
 let isVoidTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g g.system_Void_tcref tcref | _ -> false) 
 let isILAppTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tcref.IsILTycon | _ -> false) 
 let isNativePtrTy g ty = ty |> stripTyEqns g |> (function TType_app(tcref, _) -> tyconRefEq g g.nativeptr_tcr tcref | _ -> false) 
@@ -1824,6 +1825,10 @@ let isRefTy g ty =
         isUnitTy g ty ||
         (isAnonRecdTy g ty && not (isStructAnonRecdTy g ty))
     )
+
+let isForallFunctionTy g ty =
+    let _, tau = tryDestForallTy g ty
+    isFunTy g tau
 
 // ECMA C# LANGUAGE SPECIFICATION, 27.2
 // An unmanaged-type is any type that isn't a reference-type, a type-parameter, or a generic struct-type and
@@ -2306,9 +2311,9 @@ let GetTraitConstraintInfosOfTypars g (tps: Typars) =
     |> List.sortBy (fun traitInfo -> traitInfo.MemberName, traitInfo.ArgumentTypes.Length)
 
 /// Get information about the runtime witnesses needed for a set of generalized typars
-let GetTraitWitnessInfosOfTypars g numParentTypars tps = 
-    let tps = tps |> List.skip numParentTypars
-    let cxs = GetTraitConstraintInfosOfTypars g tps
+let GetTraitWitnessInfosOfTypars g numParentTypars typars = 
+    let typs = typars |> List.skip numParentTypars
+    let cxs = GetTraitConstraintInfosOfTypars g typs
     cxs |> List.map (fun cx -> cx.TraitKey)
 
 /// Count the number of type parameters on the enclosing type
@@ -2745,6 +2750,8 @@ type DisplayEnv =
       showConstraintTyparAnnotations: bool
       abbreviateAdditionalConstraints: bool
       showTyparDefaultConstraints: bool
+      shrinkOverloads: bool
+      printVerboseSignatures : bool
       g: TcGlobals
       contextAccessibility: Accessibility
       generatedValueLayout : (Val -> layout option) }
@@ -2776,6 +2783,8 @@ type DisplayEnv =
         showTyparDefaultConstraints = false
         shortConstraints = false
         useColonForReturnType = false
+        shrinkOverloads = true
+        printVerboseSignatures = false
         g = tcGlobals
         contextAccessibility = taccessPublic
         generatedValueLayout = (fun _ -> None) }
@@ -2844,7 +2853,7 @@ let tagEntityRefName (xref: EntityRef) name =
     elif xref.IsFSharpDelegateTycon then tagDelegate name
     elif xref.IsILEnumTycon || xref.IsFSharpEnumTycon then tagEnum name
     elif xref.IsStructOrEnumTycon then tagStruct name
-    elif xref.IsFSharpInterfaceTycon then tagInterface name
+    elif isInterfaceTyconRef xref then tagInterface name
     elif xref.IsUnionTycon then tagUnion name
     elif xref.IsRecordTycon then tagRecord name
     else tagClass name
@@ -4237,9 +4246,12 @@ let ComputeRemappingFromInferredSignatureToExplicitSignature g mty msigty =
 /// At TMDefRec nodes abstract (virtual) vslots are effectively binders, even 
 /// though they are tucked away inside the tycon. This helper function extracts the
 /// virtual slots to aid with finding this babies.
-let abstractSlotValsOfTycons (tycons: Tycon list) =  
+let abstractSlotValRefsOfTycons (tycons: Tycon list) =  
     tycons 
     |> List.collect (fun tycon -> if tycon.IsFSharpObjectModelTycon then tycon.FSharpObjectModelTypeInfo.fsobjmodel_vslots else []) 
+
+let abstractSlotValsOfTycons (tycons: Tycon list) =  
+    abstractSlotValRefsOfTycons tycons 
     |> List.map (fun v -> v.Deref)
 
 let rec accEntityRemapFromModuleOrNamespace msigty x acc = 
@@ -7059,8 +7071,8 @@ let mkCallRaise (g: TcGlobals) m ty e1 = mkApps g (typedExprForIntrinsic g m g.r
 
 let mkCallNewDecimal (g: TcGlobals) m (e1, e2, e3, e4, e5) = mkApps g (typedExprForIntrinsic g m g.new_decimal_info, [], [ e1;e2;e3;e4;e5 ], m)
 
-let mkCallNewFormat (g: TcGlobals) m aty bty cty dty ety e1 =
-    mkApps g (typedExprForIntrinsic g m g.new_format_info, [[aty;bty;cty;dty;ety]], [ e1 ], m)
+let mkCallNewFormat (g: TcGlobals) m aty bty cty dty ety formatStringExpr =
+    mkApps g (typedExprForIntrinsic g m g.new_format_info, [[aty;bty;cty;dty;ety]], [ formatStringExpr ], m)
 
 let tryMkCallBuiltInWitness (g: TcGlobals) traitInfo argExprs m =
     let info, tinst = g.MakeBuiltInWitnessInfo traitInfo
@@ -7137,8 +7149,8 @@ let mkCallSeqSingleton g m ty1 arg1 =
 let mkCallSeqEmpty g m ty1 = 
     mkApps g (typedExprForIntrinsic g m g.seq_empty_info, [[ty1]], [ ], m) 
                  
-let mkCall_sprintf (g: TcGlobals) m aty fmt es = 
-    mkApps g (typedExprForIntrinsic g m g.sprintf_info, [[aty]], fmt::es , m) 
+let mkCall_sprintf (g: TcGlobals) m funcTy fmtExpr fillExprs = 
+    mkApps g (typedExprForIntrinsic g m g.sprintf_info, [[funcTy]], fmtExpr::fillExprs , m) 
                  
 let mkCallDeserializeQuotationFSharp20Plus g m e1 e2 e3 e4 = 
     let args = [ e1; e2; e3; e4 ]
