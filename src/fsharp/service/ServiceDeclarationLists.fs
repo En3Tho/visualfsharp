@@ -649,9 +649,9 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
 
         FSharpDeclarationListInfo(result, false, FSharpDisplayContext(fun _ -> denv))
 
-    static member Error msg =
+    static member Error message =
         FSharpDeclarationListInfo(
-                [| FSharpDeclarationListItem("<Note>", Choice2Of2 (FSharpToolTipText [FSharpStructuredToolTipElement.CompositionError msg]),
+                [| FSharpDeclarationListItem("<Note>", Choice2Of2 (FSharpToolTipText [FSharpStructuredToolTipElement.CompositionError message]),
                                              Unchecked.defaultof<_>, Unchecked.defaultof<_>, System.Array.Empty()) |], true, Unchecked.defaultof<_>)
     
     static member Empty = FSharpDeclarationListInfo([| |], false, Unchecked.defaultof<_>)
