@@ -1054,7 +1054,7 @@ type FSharpChecker(legacyReferenceResolver,
     let maxMemEvent = new Event<unit>()
 
     /// Instantiate an interactive checker.    
-    static member Create(?projectCacheSize, ?keepAssemblyContents, ?keepAllBackgroundResolutions, ?legacyReferenceResolver, ?tryGetMetadataSnapshot, ?suggestNamesForErrors, ?keepAllBackgroundSymbolUses, ?enableBackgroundItemKeyStoreAndSemanticClassification, ?enablePartialTypeChecking, ?reactorListenerOpt: IReactorListener) = 
+    static member Create(?projectCacheSize, ?keepAssemblyContents, ?keepAllBackgroundResolutions, ?legacyReferenceResolver, ?tryGetMetadataSnapshot, ?suggestNamesForErrors, ?keepAllBackgroundSymbolUses, ?enableBackgroundItemKeyStoreAndSemanticClassification, ?enablePartialTypeChecking, ?reactorListener: IReactorListener) =
 
         let legacyReferenceResolver = 
             match legacyReferenceResolver with
@@ -1073,7 +1073,7 @@ type FSharpChecker(legacyReferenceResolver,
         if keepAssemblyContents && enablePartialTypeChecking then
             invalidArg "enablePartialTypeChecking" "'keepAssemblyContents' and 'enablePartialTypeChecking' cannot be both enabled."
 
-        match reactorListenerOpt with
+        match reactorListener with
         | None -> ()
         | Some reactorListener -> Reactor.Singleton.SetListener reactorListener
 
