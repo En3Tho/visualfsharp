@@ -56,7 +56,7 @@ type public FSharpDeclarationListInfo =
     member DisplayContext: FSharpDisplayContext
 
     // Implementation details used by other code in the compiler
-    static member internal Create : infoReader:InfoReader * m:range * denv:DisplayEnv * cenv: SymbolEnv * unresolvedOnly: bool * items:CompletionItem list * unionCaseFieldsItems:CompletionItem list * isAttributeApplicationContex:bool -> FSharpDeclarationListInfo
+    static member internal Create : infoReader:InfoReader * m:range * denv:DisplayEnv * cenv: SymbolEnv * unresolvedOnly: bool * items:CompletionItem list * unionCaseFieldItems:CompletionItem list * isAttributeApplicationContex:bool -> FSharpDeclarationListInfo
 
     static member internal Error : message:string -> FSharpDeclarationListInfo
 

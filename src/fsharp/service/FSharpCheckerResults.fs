@@ -949,7 +949,7 @@ type internal TypeCheckInfo
                                                |> List.filter (fun _ -> unresolvedOnly |> not)
                                                |> List.map (fun cnr -> cnr.ItemWithInst |> DefaultCompletionItem)
                     let isAttributeApplication = ctx = Some CompletionContext.AttributeApplication
-                    FSharpDeclarationListInfo.Create(infoReader, m, denv, cenv, unresolvedOnly, items, unionCaseFieldsItems, reactorOps, isAttributeApplication))
+                    FSharpDeclarationListInfo.Create(infoReader, m, denv, cenv, unresolvedOnly, items, unionCaseFieldsItems, isAttributeApplication))
             (fun msg ->
                 Trace.TraceInformation(sprintf "FCS: recovering from error in GetDeclarations: '%s'" msg)
                 FSharpDeclarationListInfo.Error msg)

@@ -590,7 +590,7 @@ type FSharpDeclarationListInfo(declarations: FSharpDeclarationListItem seq, isEr
                 |> Option.defaultValue (System.Array.Empty())
             let item =
                 FSharpDeclarationListItem(
-                    name, Choice1Of2 (partitionedItems, infoReader, m, denv, reactor),
+                    name, Choice1Of2 (partitionedItems, infoReader, m, denv),
                     item, FSharpSymbol.Create(cenv, item.ItemWithInst.Item), namespaceToOpen)
             result.Add(item)
 
