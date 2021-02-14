@@ -8827,8 +8827,7 @@ and TcMethodApplication
         match assignedArg.NamedArgIdOpt with 
         | None -> ()
         | Some id ->
-            let id = defaultArg assignedArg.CalledArg.NameOpt id
-            let item = Item.ArgName (id, assignedArg.CalledArg.CalledArgumentType, Some(ArgumentContainer.Method finalCalledMethInfo), id.idText)
+            let item = Item.ArgName (defaultArg assignedArg.CalledArg.NameOpt id, assignedArg.CalledArg.CalledArgumentType, Some(ArgumentContainer.Method finalCalledMethInfo), id.idText)
             CallNameResolutionSink cenv.tcSink (id.idRange, env.NameEnv, item, emptyTyparInst, ItemOccurence.Use, ad))
 
 
