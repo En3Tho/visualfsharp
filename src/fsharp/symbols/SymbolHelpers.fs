@@ -320,7 +320,7 @@ module internal SymbolHelpers =
         | Item.CtorGroup(_, minfos) -> minfos |> List.tryPick (rangeOfMethInfo g preferFlag)
         | Item.ActivePatternResult(APInfo _, _, _, m) -> Some m
         | Item.SetterArg (_, item) -> rangeOfItem g preferFlag item
-        | Item.ArgName (id, _, _) -> Some id.idRange
+        | Item.ArgName (id, _, _, _) -> Some id.idRange
         | Item.CustomOperation (_, _, implOpt) -> implOpt |> Option.bind (rangeOfMethInfo g preferFlag)
         | Item.ImplicitOp (_, {contents = Some(TraitConstraintSln.FSMethSln(_, vref, _))}) -> Some vref.Range
         | Item.ImplicitOp _ -> None
@@ -360,7 +360,7 @@ module internal SymbolHelpers =
                 |> Option.bind ccuOfValRef
                 |> Option.orElseWith (fun () -> pinfo.DeclaringTyconRef |> computeCcuOfTyconRef))
 
-        | Item.ArgName (_, _, Some (ArgumentContainer.Method minfo))  -> ccuOfMethInfo g minfo
+        | Item.ArgName (_, _, Some (ArgumentContainer.Method minfo), _)  -> ccuOfMethInfo g minfo
 
         | Item.MethodGroup(_, minfos, _)
         | Item.CtorGroup(_, minfos) -> minfos |> List.tryPick (ccuOfMethInfo g)
@@ -368,7 +368,7 @@ module internal SymbolHelpers =
 
         | Item.Types(_, tys)             -> tys |> List.tryPick (tryNiceEntityRefOfTyOption >> Option.bind computeCcuOfTyconRef)
 
-        | Item.ArgName (_, _, Some (ArgumentContainer.Type eref)) -> computeCcuOfTyconRef eref
+        | Item.ArgName (_, _, Some (ArgumentContainer.Type eref), _) -> computeCcuOfTyconRef eref
 
         | Item.ModuleOrNamespaces erefs 
         | Item.UnqualifiedType erefs -> erefs |> List.tryPick computeCcuOfTyconRef 
@@ -569,7 +569,7 @@ module internal SymbolHelpers =
 
         | Item.MethodGroup(_, minfo :: _, _) -> mkXmlComment (GetXmlDocSigOfMethInfo infoReader  m minfo)
         | Item.CtorGroup(_, minfo :: _) -> mkXmlComment (GetXmlDocSigOfMethInfo infoReader  m minfo)
-        | Item.ArgName(_, _, Some argContainer) -> 
+        | Item.ArgName(_, _, Some argContainer, _) ->
             match argContainer with 
             | ArgumentContainer.Method minfo -> mkXmlComment (GetXmlDocSigOfMethInfo infoReader m minfo)
             | ArgumentContainer.Type tcref -> mkXmlComment (GetXmlDocSigOfEntityRef infoReader m tcref)
@@ -793,7 +793,7 @@ module internal SymbolHelpers =
             let definiteNamespace = modrefs |> List.forall (fun modref -> modref.IsNamespace)
             if definiteNamespace then fullDisplayTextOfModRef modref else modref.DemangledModuleOrNamespaceName
         | Item.TypeVar (id, _) -> id
-        | Item.ArgName (id, _, _) -> id.idText
+        | Item.ArgName (id, _, _, _) -> id.idText
         | Item.SetterArg (_, item) -> FullNameOfItem g item
         | Item.ImplicitOp(id, _) -> id.idText
         | Item.UnionCaseField (UnionCaseInfo (_, ucref), fieldIndex) -> ucref.FieldByIndex(fieldIndex).Name
@@ -858,7 +858,7 @@ module internal SymbolHelpers =
             else
                 GetXmlCommentForItemAux None infoReader m item
 
-        | Item.ArgName (_, _, argContainer) -> 
+        | Item.ArgName (_, _, argContainer, _) ->
             let xmldoc = 
                 match argContainer with
                 | Some(ArgumentContainer.Method minfo) ->

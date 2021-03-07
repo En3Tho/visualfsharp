@@ -363,7 +363,7 @@ type internal TypeCheckInfo
             match meth.GetParamDatas(amap, m, meth.FormalMethodInst) with
             | x::_ -> x |> List.choose(fun (ParamData(_isParamArray, _isInArg, _isOutArg, _optArgInfo, _callerInfo, name, _, ty)) -> 
                 match name with
-                | Some n -> Some (Item.ArgName(n, ty, Some (ArgumentContainer.Method meth)))
+                | Some n -> Some (Item.ArgName(n, ty, Some (ArgumentContainer.Method meth), n.idText))
                 | None -> None
                 )
             | _ -> []
