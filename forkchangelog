@@ -1,0 +1,20 @@
+This is the simple log of fork's changes to simplify reapplying all the changes manually if needed
+
+-------
+ParameterHighlighting
+
+TypeChecker.fs -> multiple "Param" calls
+
+
+-------
+FSharpParameter logical name
+
+Added logical name field and ctor param to FSharpParameter and 
+
+-------
+Tuple de-arity'ing
+
+CheckExpression.fs - check that tuple has a name before doing de-arity'ing in CombineSyntacticAndInferredArities
+
+-------
+List.zip-map to map2

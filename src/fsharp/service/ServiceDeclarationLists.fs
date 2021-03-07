@@ -433,7 +433,7 @@ module DeclarationListHelpers =
             ToolTipElement.Single (layout, FSharpXmlDoc.None)
             
         // Named parameters
-        | Item.ArgName (id, argTy, _) -> 
+        | Item.ArgName (id, argTy, _, _) ->
             let argTy, _ = PrettyTypes.PrettifyType g argTy
             let layout =
                 wordL (tagText (FSComp.SR.typeInfoArgument())) ^^
