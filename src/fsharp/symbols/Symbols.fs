@@ -421,32 +421,43 @@ type FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
         | Some _ -> None
 
     member x.QualifiedName = 
-        checkIsResolved()
-        let fail() = invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
+        match x.TryQualifiedName with
+        | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
+        | Some nm -> nm
+
+    member x.TryQualifiedName =
+        if isUnresolved() then None
+        else
 #if !NO_EXTENSIONTYPING
-        if entity.IsTypeAbbrev || entity.IsProvidedErasedTycon || entity.IsNamespace then fail()
+        if entity.IsTypeAbbrev || entity.IsProvidedErasedTycon || entity.IsNamespace then None
         #else
-        if entity.IsTypeAbbrev || entity.IsNamespace then fail()
+        if entity.IsTypeAbbrev || entity.IsNamespace then None
 #endif
-        match entity.CompiledRepresentation with 
-        | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.QualifiedName
-        | CompiledTypeRepr.ILAsmOpen _ -> fail()
+        else
+        match entity.CompiledRepresentation with
+        | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> Some tref.QualifiedName
+        | CompiledTypeRepr.ILAsmOpen _ -> None
         
-    member x.QualifiedBaseName = 
-         checkIsResolved()
-         let fail() = invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
+    member x.QualifiedBaseName =
+         match x.TryQualifiedBaseName with
+         | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
+         | Some nm -> nm
+
+    member x.TryQualifiedBaseName =
+         if isUnresolved() then None
+         else
  #if !NO_EXTENSIONTYPING
-         if entity.IsTypeAbbrev || entity.IsProvidedErasedTycon || entity.IsNamespace then fail()
+         if entity.IsTypeAbbrev || entity.IsProvidedErasedTycon || entity.IsNamespace then None
  #else
-         if entity.IsTypeAbbrev || entity.IsNamespace then fail()
+         if entity.IsTypeAbbrev || entity.IsNamespace then None
  #endif
-         match entity.CompiledRepresentation with 
-         | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.BasicQualifiedName
-         | CompiledTypeRepr.ILAsmOpen _ -> fail()
-        
+         else
+         match entity.CompiledRepresentation with
+         | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> Some tref.BasicQualifiedName
+         | CompiledTypeRepr.ILAsmOpen _ -> None
+
     member x.FullName = 
-        checkIsResolved()
-        match x.TryFullName with 
+        match x.TryFullName with
         | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
         | Some nm -> nm
     
@@ -2385,6 +2396,14 @@ type FSharpType(cenv, ty:TType) =
                 | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.BasicQualifiedName
                 | CompiledTypeRepr.ILAsmOpen _ -> fail() 
             | _ -> invalidOp "not a stripped type"
+
+    member x.TryQualifiedBaseName =
+        match stripTyparEqns ty with
+        | TType_app (tcref, _) ->
+            match tcref.CompiledRepresentation with
+            | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> Some tref.BasicQualifiedName
+            | CompiledTypeRepr.ILAsmOpen _ -> None
+        | _ -> None
 
     member _.Instantiate(instantiation:(FSharpGenericParameter * FSharpType) list) = 
         let typI = instType (instantiation |> List.map (fun (tyv, ty) -> tyv.V, ty.V)) ty
