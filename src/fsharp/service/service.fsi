@@ -518,4 +518,3 @@ type public CompilerEnvironment =
 
     /// Whether or not this file should be a single-file project
     static member MustBeSingleFileProject: string -> bool
-

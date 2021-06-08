@@ -756,7 +756,7 @@ type FSharpMemberOrFunctionOrValue =
     /// Indicates if this is a nested scope function parameter (like x in match value with | Some x ... or x in for x in 0..9 or x in let! x = ... in CE's)
     member IsNestedScopeParameter : bool
 
-    /// Indicates if the member, function or value is in an unresolved assembly 
+    /// Indicates if the member, function or value is in an unresolved assembly
     member IsUnresolved: bool
 
     /// Get the enclosing entity for the definition
@@ -956,7 +956,7 @@ type FSharpParameter =
     /// The optional logical name of the parameter
     member LogicalName: string voption
 
-    /// The optional name of the parameter 
+    /// The optional name of the parameter
     member Name: string option
 
     /// The declaration location of the parameter 

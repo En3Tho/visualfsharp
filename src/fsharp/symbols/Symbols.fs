@@ -437,7 +437,7 @@ type FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
         match entity.CompiledRepresentation with
         | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> Some tref.QualifiedName
         | CompiledTypeRepr.ILAsmOpen _ -> None
-        
+
     member x.QualifiedBaseName =
          match x.TryQualifiedBaseName with
          | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
@@ -456,7 +456,7 @@ type FSharpEntity(cenv: SymbolEnv, entity:EntityRef) =
          | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> Some tref.BasicQualifiedName
          | CompiledTypeRepr.ILAsmOpen _ -> None
 
-    member x.FullName = 
+    member x.FullName =
         match x.TryFullName with
         | None -> invalidOp (sprintf "the type '%s' does not have a qualified name" x.LogicalName)
         | Some nm -> nm
@@ -1728,7 +1728,7 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         | V v -> v.IsNestedScopeParam
         | _ -> false
 
-    member _.IsDispatchSlot = 
+    member _.IsDispatchSlot =
         if isUnresolved() then false else 
         match d with 
         | E e -> e.AddMethod.IsDispatchSlot
@@ -1763,7 +1763,7 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         let makeProp p vref =
             let pinfo = FSProp(cenv.g, p, Some vref, None)
             FSharpMemberOrFunctionOrValue(cenv, P pinfo, Item.Property (pinfo.PropertyName, [pinfo]))
-        if isUnresolved() then None else 
+        if isUnresolved() then None else
         match d with
         | M (FSMeth (_, p, vref, _)) when vref.IsPropertyGetterMethod || vref.IsPropertySetterMethod ->
             Some (makeProp p vref)
@@ -1771,7 +1771,7 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
             vref.MemberInfo |> Option.map (fun memInfo -> makeProp (generalizedTyconRef memInfo.ApparentEnclosingEntity) vref)
         | _ -> None
 
-    member _.IsEventAddMethod = 
+    member _.IsEventAddMethod =
         if isUnresolved() then false else 
         match d with 
         | M m ->
@@ -2374,27 +2374,27 @@ type FSharpType(cenv, ty:TType) =
              yield FSharpType(cenv, ty) ]
         |> makeReadOnlyCollection
 
-    member x.IsUnit = typeEquiv cenv.g ty cenv.g.unit_ty 
+    member x.IsUnit = typeEquiv cenv.g ty cenv.g.unit_ty
 
     member x.IsNativePtr =
         try typeEquiv cenv.g ty cenv.g.nativeint_ty
         with _ -> false
 
-    member _.BaseType = 
+    member _.BaseType =
         GetSuperTypeOfType cenv.g cenv.amap range0 ty
         |> Option.map (fun ty -> FSharpType(cenv, ty)) 
 
     member x.StrippedType =
-        FSharpType(cenv, stripTyEqnsWrtErasure EraseAll cenv.g ty) 
+        FSharpType(cenv, stripTyEqnsWrtErasure EraseAll cenv.g ty)
 
     member x.QualifiedBaseName =
         let fail () = invalidOp (sprintf "the type '%O' does not have a qualified name" x)
         protect <| fun () ->
-            match stripTyparEqns ty with 
+            match stripTyparEqns ty with
             | TType_app (tcref, _) ->
-                match tcref.CompiledRepresentation with 
+                match tcref.CompiledRepresentation with
                 | CompiledTypeRepr.ILAsmNamed(tref, _, _) -> tref.BasicQualifiedName
-                | CompiledTypeRepr.ILAsmOpen _ -> fail() 
+                | CompiledTypeRepr.ILAsmOpen _ -> fail()
             | _ -> invalidOp "not a stripped type"
 
     member x.TryQualifiedBaseName =
@@ -2405,7 +2405,7 @@ type FSharpType(cenv, ty:TType) =
             | CompiledTypeRepr.ILAsmOpen _ -> None
         | _ -> None
 
-    member _.Instantiate(instantiation:(FSharpGenericParameter * FSharpType) list) = 
+    member _.Instantiate(instantiation:(FSharpGenericParameter * FSharpType) list) =
         let typI = instType (instantiation |> List.map (fun (tyv, ty) -> tyv.V, ty.V)) ty
         FSharpType(cenv, typI)
 
@@ -2640,7 +2640,7 @@ type FSharpParameter(cenv, paramTy: TType, topArgInfo: ArgReprInfo, ownerOpt, ow
     // todo: cover IL attrs? use different name? (we need it for symbols defined in F# source only)
     member _.IsCliOptional = HasFSharpAttributeOpt cenv.g cenv.g.attrib_OptionalAttribute topArgInfo.Attribs
     member _.IsParamArray = HasFSharpAttribute cenv.g cenv.g.attrib_ParamArrayAttribute topArgInfo.Attribs
-    member _.IsOut = HasFSharpAttribute cenv.g cenv.g.attrib_OutAttribute topArgInfo.Attribs 
+    member _.IsOut = HasFSharpAttribute cenv.g cenv.g.attrib_OutAttribute topArgInfo.Attribs
 
     member _.IsWitnessArg = isWitnessArg
     

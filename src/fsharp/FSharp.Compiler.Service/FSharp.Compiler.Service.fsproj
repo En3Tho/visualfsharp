@@ -17,6 +17,7 @@
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>fcs.snk</AssemblyOriginatorKeyFile>
     <VersionPrefix>2021.1.0</VersionPrefix>
+    <OtherFlags>--version:$(VersionPrefix)</OtherFlags>
   </PropertyGroup>
 
   <PropertyGroup>
